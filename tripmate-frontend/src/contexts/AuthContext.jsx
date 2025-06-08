@@ -1,3 +1,4 @@
+// src/contexts/AuthContext.jsx - Updated with better error handling
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import api from '../services/api';
 
@@ -45,9 +46,13 @@ export const AuthProvider = ({ children }) => {
       setUser(user);
       return { success: true };
     } catch (error) {
+      const errorMessage = error.response?.data?.username?.[0] || 
+                          error.response?.data?.non_field_errors?.[0] ||
+                          error.response?.data?.error || 
+                          'Login failed. Please check your credentials.';
       return { 
         success: false, 
-        error: error.response?.data?.error || 'Login failed' 
+        error: errorMessage
       };
     }
   };
@@ -104,3 +109,4 @@ export const AuthProvider = ({ children }) => {
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
+          

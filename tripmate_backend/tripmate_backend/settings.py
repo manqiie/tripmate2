@@ -122,5 +122,14 @@ REST_FRAMEWORK = {
     ]
 }
 
-# Email backend for development
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+# Email settings - Gmail Configuration
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'TripMate321@gmail.com'
+EMAIL_HOST_PASSWORD = 'cmsizmqdqjabhzdm'  # App password
+DEFAULT_FROM_EMAIL = 'TripMate <TripMate321@gmail.com>'
+
+# For development, you can also use console backend to see emails in terminal
+# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'

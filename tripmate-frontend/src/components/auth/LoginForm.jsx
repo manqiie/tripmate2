@@ -1,4 +1,4 @@
-// src/components/auth/LoginForm.jsx
+// src/components/auth/LoginForm.jsx - Updated to support email/username
 import React, { useState } from 'react';
 import { Eye, EyeOff, User, Lock } from 'lucide-react';
 import Input from '../common/Input';
@@ -42,7 +42,7 @@ const LoginForm = ({ onSwitchToRegister, onSwitchToReset }) => {
         <Input
           icon={User}
           type="text"
-          placeholder="Username"
+          placeholder="Username or Email"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           required
