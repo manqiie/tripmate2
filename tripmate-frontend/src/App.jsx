@@ -6,6 +6,7 @@ import Layout from './components/layout/Layout';
 import HomePage from './pages/HomePage';
 import AuthPage from './pages/AuthPage';
 import ProfilePage from './pages/ProfilePage';
+import SavedTripsPage from './pages/SavedTripsPage';
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/saved-trips" element={<SavedTripsPage />} />
           </Routes>
         </Layout>
       </AuthProvider>

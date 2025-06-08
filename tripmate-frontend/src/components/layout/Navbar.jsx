@@ -1,6 +1,6 @@
 // src/components/layout/Navbar.jsx
 import React from 'react';
-import { MapPin, User, LogOut } from 'lucide-react';
+import { MapPin, User, LogOut, Bookmark } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -25,6 +25,13 @@ const Navbar = () => {
           <div className="flex items-center gap-4">
             {user ? (
               <>
+                <Link 
+                  to="/saved-trips" 
+                  className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-blue-600 transition-colors"
+                >
+                  <Bookmark className="w-5 h-5" />
+                  <span>Saved Trips</span>
+                </Link>
                 <Link 
                   to="/profile" 
                   className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-blue-600 transition-colors"
