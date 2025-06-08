@@ -1,4 +1,4 @@
-// src/components/trip/TripPlanner.jsx
+// src/components/trip/TripPlanner.jsx - FIXED VERSION
 import React, { useState } from 'react';
 import { MapPin, Calendar, Users, Plus, X, Route, Save, Clock } from 'lucide-react';
 import GoogleMap from '../maps/GoogleMap';
@@ -18,8 +18,8 @@ const TripPlanner = () => {
     waypoints: []
   });
   
-  const [route, setRoute] = useState(null);
-  const [routeInfo, setRouteInfo] = useState(null);
+  // CHANGE: Store the complete route result, not just the route part
+  const [routeResult, setRouteResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -66,19 +66,20 @@ const TripPlanner = () => {
     try {
       const validWaypoints = tripData.waypoints.filter(wp => wp.trim() !== '');
       
-      const routeResult = await googleMapsService.calculateOptimizedRoute(
+      // FIXED: Store the complete result
+      const result = await googleMapsService.calculateOptimizedRoute(
         tripData.startLocation,
         tripData.endLocation,
         validWaypoints
       );
 
-      setRoute(routeResult.route);
-      setRouteInfo({
-        totalDistance: routeResult.totalDistance,
-        totalDuration: routeResult.totalDuration,
-        optimizedWaypoints: routeResult.optimizedWaypoints
-      });
+      console.log('Route calculation result:', result);
+      
+      // Store the complete result
+      setRouteResult(result);
+      
     } catch (err) {
+      console.error('Route calculation error:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -96,7 +97,7 @@ const TripPlanner = () => {
       return;
     }
 
-    if (!route) {
+    if (!routeResult?.route) {
       setError('Please plan the route first');
       return;
     }
@@ -113,9 +114,9 @@ const TripPlanner = () => {
         end_date: tripData.endDate,
         travelers: tripData.travelers,
         waypoints: tripData.waypoints.filter(wp => wp.trim() !== ''),
-        route_data: JSON.stringify(route),
-        total_distance: routeInfo?.totalDistance || 0,
-        total_duration: routeInfo?.totalDuration || 0
+        route_data: JSON.stringify(routeResult.route),
+        total_distance: routeResult?.totalDistance || 0,
+        total_duration: routeResult?.totalDuration || 0
       };
 
       await api.post('/trips/', tripDataToSave);
@@ -303,7 +304,7 @@ const TripPlanner = () => {
                 )}
               </button>
 
-              {user && route && (
+              {user && routeResult && (
                 <button
                   onClick={handleSaveTrip}
                   disabled={saving}
@@ -325,7 +326,7 @@ const TripPlanner = () => {
       </div>
 
       {/* Route Information */}
-      {routeInfo && (
+      {routeResult && (
         <div className="bg-white rounded-xl shadow-lg p-6">
           <h3 className="text-xl font-bold text-gray-900 mb-4">Route Information</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -334,7 +335,7 @@ const TripPlanner = () => {
                 <Route className="w-5 h-5 text-blue-600" />
                 <span className="font-medium text-blue-800">Distance</span>
               </div>
-              <p className="text-2xl font-bold text-blue-900">{routeInfo.totalDistance} km</p>
+              <p className="text-2xl font-bold text-blue-900">{routeResult.totalDistance} km</p>
             </div>
             <div className="bg-green-50 p-4 rounded-lg">
               <div className="flex items-center gap-2">
@@ -342,7 +343,7 @@ const TripPlanner = () => {
                 <span className="font-medium text-green-800">Duration</span>
               </div>
               <p className="text-2xl font-bold text-green-900">
-                {Math.floor(routeInfo.totalDuration / 60)}h {routeInfo.totalDuration % 60}m
+                {Math.floor(routeResult.totalDuration / 60)}h {routeResult.totalDuration % 60}m
               </p>
             </div>
             <div className="bg-purple-50 p-4 rounded-lg">
@@ -362,7 +363,7 @@ const TripPlanner = () => {
       <div className="bg-white rounded-xl shadow-lg p-6">
         <h3 className="text-xl font-bold text-gray-900 mb-4">Route Map</h3>
         <GoogleMap
-          route={route}
+          route={routeResult?.route}  /* FIXED: Pass the actual DirectionsResult */
           className="w-full h-96 rounded-lg"
         />
       </div>
