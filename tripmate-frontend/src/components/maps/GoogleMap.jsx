@@ -133,6 +133,8 @@ const GoogleMap = ({
   const renderFlightRoute = () => {
     try {
       console.log('✈️ Rendering flight route...');
+      console.log('Flight route data:', route);
+      console.log('Route info:', routeInfo);
       
       // Clear existing driving route
       if (directionsRendererRef.current) {
@@ -141,113 +143,61 @@ const GoogleMap = ({
 
       clearFlightPaths();
 
-      if (!route.routes || !route.routes[0] || !route.routes[0].legs) {
-        throw new Error('Invalid flight route data structure');
-      }
-
-      const legs = route.routes[0].legs;
-      console.log('Flight route legs:', legs.length);
-      
-      // Create flight path segments and markers
-      legs.forEach((leg, index) => {
-        console.log(`Processing flight leg ${index + 1}:`, leg);
+      // FIXED: Use coordinates from routeInfo instead of trying to extract from legs
+      if (routeInfo?.coordinates && routeInfo.coordinates.length >= 2) {
+        console.log('✅ Using coordinates from routeInfo:', routeInfo.coordinates);
         
-        // Extract coordinates with multiple fallback methods
-        let start, end;
-        
-        try {
-          // Method 1: Function calls (Google Maps LatLng objects)
-          if (leg.start_location.lat && typeof leg.start_location.lat === 'function') {
-            start = {
-              lat: leg.start_location.lat(),
-              lng: leg.start_location.lng()
-            };
-          }
-          // Method 2: Direct object properties
-          else if (typeof leg.start_location.lat === 'number') {
-            start = {
-              lat: leg.start_location.lat,
-              lng: leg.start_location.lng
-            };
-          }
-          // Method 3: Nested lat/lng objects
-          else if (leg.start_location.lat?.lat) {
-            start = {
-              lat: leg.start_location.lat.lat,
-              lng: leg.start_location.lng.lng
-            };
-          }
-          else {
-            throw new Error('Could not extract start coordinates');
-          }
-
-          // Same for end location
-          if (leg.end_location.lat && typeof leg.end_location.lat === 'function') {
-            end = {
-              lat: leg.end_location.lat(),
-              lng: leg.end_location.lng()
-            };
-          }
-          else if (typeof leg.end_location.lat === 'number') {
-            end = {
-              lat: leg.end_location.lat,
-              lng: leg.end_location.lng
-            };
-          }
-          else if (leg.end_location.lat?.lat) {
-            end = {
-              lat: leg.end_location.lat.lat,
-              lng: leg.end_location.lng.lng
-            };
-          }
-          else {
-            throw new Error('Could not extract end coordinates');
-          }
-
-          console.log(`✅ Flight segment ${index + 1}: from`, start, 'to', end);
+        // Create flight path segments between consecutive coordinates
+        for (let i = 0; i < routeInfo.coordinates.length - 1; i++) {
+          const start = routeInfo.coordinates[i];
+          const end = routeInfo.coordinates[i + 1];
+          
+          console.log(`Creating flight segment ${i + 1}: from`, start, 'to', end);
           
           // Validate coordinates
-          if (isNaN(start.lat) || isNaN(start.lng) || isNaN(end.lat) || isNaN(end.lng)) {
-            throw new Error('Invalid coordinates extracted');
+          if (!start.lat || !start.lng || !end.lat || !end.lng) {
+            console.error('Invalid coordinates:', { start, end });
+            continue;
           }
+
+          // Create the flight path polyline with dotted pattern
+          const flightPath = new window.google.maps.Polyline({
+            path: [
+              { lat: start.lat, lng: start.lng },
+              { lat: end.lat, lng: end.lng }
+            ],
+            geodesic: true,
+            strokeColor: '#ff6b35',
+            strokeOpacity: 0,  // Make the main line invisible
+            strokeWeight: 1,   // Minimal weight for the invisible line
+            icons: [{
+              icon: {
+                path: 'M 0,-2 0,2',  // Vertical line for dash
+                strokeOpacity: 1,
+                strokeColor: '#ff6b35',
+                strokeWeight: 4,
+                scale: 2
+              },
+              offset: '0',
+              repeat: '20px'  // Distance between dashes
+            }]
+          });
+
+          flightPath.setMap(mapInstanceRef.current);
+          flightPathRef.current.push(flightPath);
           
-        } catch (coordError) {
-          console.error(`❌ Failed to extract coordinates for leg ${index + 1}:`, coordError);
-          console.log('Raw leg data:', leg);
-          return; // Skip this leg
+          console.log(`✅ Created flight path segment ${i + 1}`);
         }
 
-        // Create the dotted flight path polyline with enhanced visibility
-        const flightPath = new window.google.maps.Polyline({
-          path: [start, end],
-          geodesic: true,
-          strokeColor: '#ff6b35',
-          strokeOpacity: 0.3,  // Visible background line
-          strokeWeight: 8,     // Thick base line
-          icons: [{
-            icon: {
-              path: 'M 0,-4 0,4',  // Even larger dash
-              strokeOpacity: 1,
-              strokeColor: '#ff6b35',
-              strokeWeight: 6,
-              scale: 3  // Much bigger dashes
-            },
-            offset: '0',
-            repeat: '25px'  // More space between dashes
-          }]
-        });
+        // Add markers for start and end points
+        const startCoord = routeInfo.coordinates[0];
+        const endCoord = routeInfo.coordinates[routeInfo.coordinates.length - 1];
 
-        flightPath.setMap(mapInstanceRef.current);
-        flightPathRef.current.push(flightPath);
-        
-        console.log(`✅ Created flight path polyline for segment ${index + 1}`);
-
-        // Create airplane icon SVG
+        // Create airplane icon
         const airplaneIcon = {
           url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M21 16V14L13 9V3.5C13 2.67 12.33 2 11.5 2S10 2.67 10 3.5V9L2 14V16L10 13.5V19L8 20.5V22L11.5 21L15 22V20.5L13 19V13.5L21 16Z" fill="#ff6b35"/>
-              <circle cx="12" cy="12" r="12" fill="white" fill-opacity="0.8"/>
+              <circle cx="12" cy="12" r="12" fill="white" fill-opacity="0.9"/>
               <path d="M21 16V14L13 9V3.5C13 2.67 12.33 2 11.5 2S10 2.67 10 3.5V9L2 14V16L10 13.5V19L8 20.5V22L11.5 21L15 22V20.5L13 19V13.5L21 16Z" fill="#ff6b35"/>
             </svg>
           `),
@@ -255,39 +205,141 @@ const GoogleMap = ({
           anchor: new window.google.maps.Point(16, 16)
         };
 
-        // Add start marker (airport)
+        // Start marker
         const startMarker = new window.google.maps.Marker({
-          position: start,
+          position: { lat: startCoord.lat, lng: startCoord.lng },
           map: mapInstanceRef.current,
-          title: `Departure: ${leg.start_address}`,
+          title: `Departure: ${startCoord.formatted_address || 'Origin'}`,
           icon: airplaneIcon
         });
-
         flightPathRef.current.push(startMarker);
 
-        // Add end marker for the last leg
-        if (index === legs.length - 1) {
-          const endMarker = new window.google.maps.Marker({
-            position: end,
+        // End marker
+        const endMarker = new window.google.maps.Marker({
+          position: { lat: endCoord.lat, lng: endCoord.lng },
+          map: mapInstanceRef.current,
+          title: `Arrival: ${endCoord.formatted_address || 'Destination'}`,
+          icon: airplaneIcon
+        });
+        flightPathRef.current.push(endMarker);
+
+        // Waypoint markers
+        for (let i = 1; i < routeInfo.coordinates.length - 1; i++) {
+          const waypoint = routeInfo.coordinates[i];
+          const waypointMarker = new window.google.maps.Marker({
+            position: { lat: waypoint.lat, lng: waypoint.lng },
             map: mapInstanceRef.current,
-            title: `Arrival: ${leg.end_address}`,
+            title: `Waypoint: ${waypoint.formatted_address || `Stop ${i}`}`,
             icon: airplaneIcon
           });
-          flightPathRef.current.push(endMarker);
+          flightPathRef.current.push(waypointMarker);
         }
-      });
 
-      // Fit bounds to show entire flight route
-      if (route.routes[0]?.bounds) {
-        console.log('Setting bounds for flight route');
-        mapInstanceRef.current.fitBounds(route.routes[0].bounds);
+        // Fit bounds to show entire flight route
+        if (routeInfo.bounds) {
+          console.log('Setting bounds for flight route:', routeInfo.bounds);
+          const bounds = new window.google.maps.LatLngBounds();
+          bounds.extend({ lat: routeInfo.bounds.south, lng: routeInfo.bounds.west });
+          bounds.extend({ lat: routeInfo.bounds.north, lng: routeInfo.bounds.east });
+          mapInstanceRef.current.fitBounds(bounds);
+        } else if (route.routes?.[0]?.bounds) {
+          mapInstanceRef.current.fitBounds(route.routes[0].bounds);
+        }
+
+        console.log('✅ Flight route rendered successfully with', routeInfo.coordinates.length, 'points');
+
+      } else {
+        // Fallback: try to extract from route legs (old method)
+        console.warn('⚠️ No coordinates in routeInfo, trying fallback method');
+        renderFlightRouteFallback();
       }
-
-      console.log('✅ Flight route rendered successfully with', legs.length, 'segments');
 
     } catch (err) {
       console.error('❌ Flight route rendering failed:', err);
       setError(`Flight route rendering failed: ${err.message}`);
+    }
+  };
+
+  // Fallback method for rendering flight routes (in case coordinates are not in routeInfo)
+  const renderFlightRouteFallback = () => {
+    try {
+      console.log('📦 Using fallback flight rendering method');
+      
+      if (!route.routes || !route.routes[0] || !route.routes[0].legs) {
+        throw new Error('Invalid route structure for fallback method');
+      }
+
+      const legs = route.routes[0].legs;
+      console.log('Flight route legs:', legs.length);
+      
+      legs.forEach((leg, index) => {
+        console.log(`Processing flight leg ${index + 1}:`, leg);
+        
+        let start, end;
+        
+        try {
+          // Extract start coordinates
+          if (typeof leg.start_location?.lat === 'function') {
+            start = {
+              lat: leg.start_location.lat(),
+              lng: leg.start_location.lng()
+            };
+          } else if (typeof leg.start_location?.lat === 'number') {
+            start = {
+              lat: leg.start_location.lat,
+              lng: leg.start_location.lng
+            };
+          } else {
+            throw new Error('Could not extract start coordinates');
+          }
+
+          // Extract end coordinates
+          if (typeof leg.end_location?.lat === 'function') {
+            end = {
+              lat: leg.end_location.lat(),
+              lng: leg.end_location.lng()
+            };
+          } else if (typeof leg.end_location?.lat === 'number') {
+            end = {
+              lat: leg.end_location.lat,
+              lng: leg.end_location.lng
+            };
+          } else {
+            throw new Error('Could not extract end coordinates');
+          }
+
+          console.log(`✅ Fallback coordinates for segment ${index + 1}:`, { start, end });
+          
+          // Create flight path with dotted pattern
+          const flightPath = new window.google.maps.Polyline({
+            path: [start, end],
+            geodesic: true,
+            strokeColor: '#ff6b35',
+            strokeOpacity: 0,  // Make the main line invisible
+            strokeWeight: 1,   // Minimal weight for the invisible line
+            icons: [{
+              icon: {
+                path: 'M 0,-2 0,2',  // Vertical line for dash
+                strokeOpacity: 1,
+                strokeColor: '#ff6b35',
+                strokeWeight: 4,
+                scale: 2
+              },
+              offset: '0',
+              repeat: '20px'  // Distance between dashes
+            }]
+          });
+
+          flightPath.setMap(mapInstanceRef.current);
+          flightPathRef.current.push(flightPath);
+          
+        } catch (coordError) {
+          console.error(`❌ Fallback coordinate extraction failed for leg ${index + 1}:`, coordError);
+        }
+      });
+
+    } catch (err) {
+      console.error('❌ Fallback flight rendering failed:', err);
     }
   };
 
@@ -368,8 +420,9 @@ const GoogleMap = ({
         <div className="absolute bottom-2 left-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 text-xs z-10 max-w-xs">
           <div className="text-orange-800">
             <div className="font-medium">Flight Route Debug:</div>
-            <div>Legs: {route.routes?.[0]?.legs?.length || 0}</div>
+            <div>Coordinates: {routeInfo.coordinates?.length || 0}</div>
             <div>Paths rendered: {flightPathRef.current.length}</div>
+            <div>Has bounds: {routeInfo.bounds ? 'Yes' : 'No'}</div>
           </div>
         </div>
       )}
