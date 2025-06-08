@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# Environment variables (IMPORTANT: Keep your API keys secure)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -22,3 +29,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# API Keys and secrets (additional security)
+config/keys.js
+src/config/keys.js
+**/keys.js
+**/*key*.js
+**/*secret*.js
