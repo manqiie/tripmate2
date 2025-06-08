@@ -1,4 +1,4 @@
-// src/components/auth/ProfileForm.jsx - Updated without profile picture
+// src/components/auth/ProfileForm.jsx - Updated with proper alignment and no note
 import React, { useState, useEffect } from 'react';
 import { User, Mail, Phone, Calendar } from 'lucide-react';
 import Input from '../common/Input';
@@ -105,7 +105,7 @@ const ProfileForm = () => {
           value={formData.username}
           onChange={handleChange}
           disabled
-          className="bg-gray-100"
+          className="bg-gray-100 cursor-not-allowed"
         />
 
         <Input
@@ -134,12 +134,6 @@ const ProfileForm = () => {
           value={formData.date_of_birth}
           onChange={handleChange}
         />
-
-        <div className="bg-blue-50 p-4 rounded-lg">
-          <p className="text-sm text-blue-800">
-            <strong>Note:</strong> You can update any field individually. Leave fields empty if you don't want to change them.
-          </p>
-        </div>
 
         <Button type="submit" disabled={loading}>
           {loading ? 'Updating...' : 'Update Profile'}
