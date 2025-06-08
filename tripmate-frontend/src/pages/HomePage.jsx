@@ -1,13 +1,76 @@
-// src/pages/HomePage.jsx - Clean version without debug components
+// src/pages/HomePage.jsx - Updated with debug component
 import React, { useState } from 'react';
 import { MapPin, Route, Camera, MessageCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import TripPlanner from '../components/trip/TripPlanner';
 
+// Import the debug components
+import GoogleMap from '../components/maps/GoogleMap';
+import googleMapsService from '../services/googleMaps';
+import FlightRouteDebug from '../components/debug/FlightRouteDebug';
+
+// Debug component (temporary)
+const SimpleFlightTest = () => {
+  const [routeResult, setRouteResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const testRoute = async () => {
+    setLoading(true);
+    try {
+      const result = await googleMapsService.calculateOptimizedRoute(
+        'Malaysia',
+        'Japan',
+        []
+      );
+      console.log('🧪 Test result:', result);
+      setRouteResult(result);
+    } catch (error) {
+      console.error('❌ Test failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <FlightRouteDebug />
+      
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <h3 className="text-xl font-bold mb-4">Flight Route Visual Test</h3>
+        
+        <button
+          onClick={testRoute}
+          disabled={loading}
+          className="mb-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
+        >
+          {loading ? 'Testing...' : 'Test Malaysia → Japan Flight'}
+        </button>
+
+        {routeResult && (
+          <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+            <div className="text-blue-800">
+              <p>Route Type: {routeResult.routeType}</p>
+              <p>Is Flight: {routeResult.isFlightRoute ? 'Yes' : 'No'}</p>
+              <p>Has Route Data: {routeResult.route ? 'Yes' : 'No'}</p>
+            </div>
+          </div>
+        )}
+
+        <GoogleMap
+          route={routeResult?.route}
+          routeInfo={routeResult}
+          className="w-full h-96 rounded-lg"
+        />
+      </div>
+    </div>
+  );
+};
+
 const HomePage = () => {
   const { user } = useAuth();
   const [showTripPlanner, setShowTripPlanner] = useState(false);
+  const [showDebug, setShowDebug] = useState(false); // Add debug toggle
 
   const features = [
     {
@@ -32,6 +95,26 @@ const HomePage = () => {
     }
   ];
 
+  // Show debug component if enabled
+  if (showDebug) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => setShowDebug(false)}
+            className="text-blue-600 hover:text-blue-700 font-medium"
+          >
+            ← Back to Home
+          </button>
+          <div className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-medium">
+            🧪 Debug Mode
+          </div>
+        </div>
+        <SimpleFlightTest />
+      </div>
+    );
+  }
+
   if (showTripPlanner) {
     return (
       <div className="space-y-6">
@@ -50,6 +133,16 @@ const HomePage = () => {
 
   return (
     <div className="space-y-16">
+      {/* Debug Button (temporary) */}
+      <div className="fixed top-20 right-4 z-50">
+        <button
+          onClick={() => setShowDebug(true)}
+          className="bg-yellow-500 text-white px-3 py-2 rounded-lg shadow-lg hover:bg-yellow-600 text-sm font-medium"
+        >
+          🧪 Debug Flight Routes
+        </button>
+      </div>
+
       {/* Hero Section */}
       <section className="text-center py-16 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-2xl">
         <h1 className="text-5xl font-bold text-gray-900 mb-4">
