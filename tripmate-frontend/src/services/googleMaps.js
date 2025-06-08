@@ -1,44 +1,68 @@
-// src/services/googleMaps.js - Secure version with proper route optimization
+// src/services/googleMaps.js - Improved version with better debugging
 class GoogleMapsService {
   constructor() {
     this.isLoaded = false;
     this.loadPromise = null;
     // Get API key from environment variable
     this.apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+    
+    // Debug logging
+    console.log('Google Maps Service initialized');
+    console.log('API Key present:', !!this.apiKey);
+    console.log('API Key length:', this.apiKey?.length || 0);
   }
 
   // Load Google Maps API
   loadGoogleMaps() {
     if (this.isLoaded) {
+      console.log('Google Maps already loaded');
       return Promise.resolve();
     }
 
     if (this.loadPromise) {
+      console.log('Google Maps loading in progress');
       return this.loadPromise;
     }
 
     if (!this.apiKey) {
-      return Promise.reject(new Error('Google Maps API key not found. Please set VITE_GOOGLE_MAPS_API_KEY in your .env file'));
+      const error = 'Google Maps API key not found. Please set VITE_GOOGLE_MAPS_API_KEY in your .env file';
+      console.error(error);
+      return Promise.reject(new Error(error));
     }
+
+    console.log('Starting to load Google Maps API...');
 
     this.loadPromise = new Promise((resolve, reject) => {
       if (window.google && window.google.maps) {
+        console.log('Google Maps found in window object');
         this.isLoaded = true;
         resolve();
         return;
       }
 
       const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${this.apiKey}&libraries=places`;
+      const libraries = ['places', 'geometry'].join(',');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${this.apiKey}&libraries=${libraries}&v=weekly`;
       script.async = true;
       script.defer = true;
       
+      console.log('Loading script:', script.src);
+      
       script.onload = () => {
-        this.isLoaded = true;
-        resolve();
+        console.log('Google Maps script loaded successfully');
+        if (window.google && window.google.maps) {
+          this.isLoaded = true;
+          console.log('Google Maps API is ready');
+          resolve();
+        } else {
+          const error = 'Google Maps API loaded but not accessible';
+          console.error(error);
+          reject(new Error(error));
+        }
       };
       
-      script.onerror = () => {
+      script.onerror = (error) => {
+        console.error('Failed to load Google Maps script:', error);
         reject(new Error('Failed to load Google Maps API. Check your API key and internet connection.'));
       };
 
@@ -74,7 +98,7 @@ class GoogleMapsService {
         origin: startLocation,
         destination: endLocation,
         waypoints: waypointObjects,
-        optimizeWaypoints: waypointObjects.length > 0, // Only optimize if there are waypoints
+        optimizeWaypoints: waypointObjects.length > 0,
         travelMode: window.google.maps.TravelMode.DRIVING,
         unitSystem: window.google.maps.UnitSystem.METRIC,
         avoidHighways: false,
@@ -82,8 +106,10 @@ class GoogleMapsService {
       };
 
       directionsService.route(request, (result, status) => {
+        console.log('Directions API response:', { status, result });
+        
         if (status === 'OK') {
-          console.log('Route calculated successfully:', result);
+          console.log('Route calculated successfully');
           resolve(result);
         } else {
           console.error('Directions request failed:', status);
@@ -109,7 +135,7 @@ class GoogleMapsService {
               errorMessage = 'API quota exceeded. Please try again later.';
               break;
             case 'REQUEST_DENIED':
-              errorMessage = 'Request denied. Please check your API key restrictions.';
+              errorMessage = 'Request denied. Please check your API key and restrictions.';
               break;
             case 'UNKNOWN_ERROR':
               errorMessage = 'Unknown error occurred. Please try again.';
@@ -213,21 +239,22 @@ class GoogleMapsService {
     }
   }
 
-  // Validate API key and check restrictions
-  async validateApiKey() {
+  // Test API key validity
+  async testApiKey() {
     try {
-      // Try to load a simple map to test the API key
       await this.loadGoogleMaps();
       
-      // Create a test geocoder request
+      // Try a simple geocoding request to test the key
       const geocoder = new window.google.maps.Geocoder();
       
       return new Promise((resolve) => {
         geocoder.geocode({ 
           address: 'Google, Mountain View, CA' 
         }, (results, status) => {
+          console.log('API Key test result:', { status, results });
+          
           if (status === 'OK') {
-            resolve({ valid: true, message: 'API key is valid' });
+            resolve({ valid: true, message: 'API key is working correctly' });
           } else if (status === 'REQUEST_DENIED') {
             resolve({ 
               valid: false, 

@@ -1,9 +1,13 @@
-// src/pages/HomePage.jsx
+// src/pages/HomePage.jsx - Add the basic test temporarily
 import React, { useState } from 'react';
-import { MapPin, Route, Camera, MessageCircle, Calendar, Users, ChevronDown } from 'lucide-react';
+import { MapPin, Route, Camera, MessageCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import TripPlanner from '../components/trip/TripPlanner';
+import MapsDebug from '../components/debug/MapsDebug';
+
+import RouteDebug from '../components/debug/RouteDebug'; // Add route debug
+import DirectRouteTest from '../components/test/DirectRouteTest'; // Add direct test
 
 const HomePage = () => {
   const { user } = useAuth();
@@ -43,6 +47,9 @@ const HomePage = () => {
             ← Back to Home
           </button>
         </div>
+        <MapsDebug />
+        
+        <RouteDebug /> {/* Add route debug */}
         <TripPlanner />
       </div>
     );
@@ -50,6 +57,12 @@ const HomePage = () => {
 
   return (
     <div className="space-y-16">
+      {/* Debug Components - Remove after fixing */}
+      <MapsDebug />
+      
+      <DirectRouteTest /> {/* Direct route test */}
+      <RouteDebug /> {/* Add route debug */}
+
       {/* Hero Section */}
       <section className="text-center py-16 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-2xl">
         <h1 className="text-5xl font-bold text-gray-900 mb-4">
@@ -59,7 +72,6 @@ const HomePage = () => {
           Plan & book your dream trip with optimized routes and Google Maps integration
         </p>
         
-        {/* Quick Action Button */}
         <div className="space-y-4">
           <button
             onClick={() => setShowTripPlanner(true)}

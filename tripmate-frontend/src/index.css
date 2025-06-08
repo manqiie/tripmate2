@@ -1,3 +1,41 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+.gm-style {
+  font-family: inherit !important;
+}
+
+/* Ensure map containers have proper dimensions */
+[class*="google-map"], 
+[class*="map-container"],
+div[style*="position: relative"] {
+  position: relative !important;
+  overflow: hidden !important;
+  min-height: 300px !important;
+}
+
+/* Fix for potential z-index issues */
+.gm-style > div {
+  z-index: auto !important;
+}
+
+/* Ensure map images load */
+.gm-style img {
+  max-width: none !important;
+  height: auto !important;
+}
+
+/* Debug styles - remove after fixing */
+.map-debug {
+  border: 2px solid red !important;
+  background-color: yellow !important;
+}
+
+/* Force visibility for troubleshooting */
+.force-visible {
+  visibility: visible !important;
+  display: block !important;
+  opacity: 1 !important;
+  z-index: 1000 !important;
+}
