@@ -1,11 +1,31 @@
 // src/pages/HomePage.jsx
-import React from 'react';
-import { MapPin, Route, Camera, MessageCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { MapPin, Route, Camera, MessageCircle, Calendar, Users, ChevronDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 const HomePage = () => {
   const { user } = useAuth();
+  const [tripData, setTripData] = useState({
+
+    duration: '7',
+    travelers: '2'
+  });
+
+  const [showDateDropdown, setShowDateDropdown] = useState(false);
+  const [showTravelersDropdown, setShowTravelersDropdown] = useState(false);
+
+  const handleInputChange = (e) => {
+    setTripData({
+      ...tripData,
+      [e.target.name]: e.target.value
+    });
+  };
+
+  const handlePlanTrip = () => {
+    console.log('Planning trip:', tripData);
+    // Handle trip planning logic here
+  };
 
   const features = [
     {
@@ -35,28 +55,122 @@ const HomePage = () => {
       {/* Hero Section */}
       <section className="text-center py-16 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-2xl">
         <h1 className="text-5xl font-bold text-gray-900 mb-4">
-          Plan Your Perfect Trip with TripMate
+          YOUR ULTIMATE TRIP PLANNER
         </h1>
-        <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-          Create optimized travel routes, capture memories, and explore destinations 
-          with our intelligent trip planning platform
+        <p className="text-xl text-gray-600 mb-12 max-w-2xl mx-auto">
+          Plan & book your dream trip
         </p>
-        {user ? (
-          <Link 
-            to="/trips/new" 
-            className="inline-flex items-center gap-2 px-8 py-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-lg font-medium shadow-lg"
-          >
-            <MapPin className="w-6 h-6" />
-            Start Planning
-          </Link>
-        ) : (
-          <Link 
-            to="/auth" 
-            className="inline-flex items-center gap-2 px-8 py-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-lg font-medium shadow-lg"
-          >
-            Get Started Free
-          </Link>
-        )}
+        
+        {/* Trip Planning Form */}
+        <div className="max-w-6xl mx-auto bg-white rounded-lg shadow-lg p-2">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+            {/* Start Location */}
+            <div className="relative">
+              <label className="block text-sm font-medium text-gray-600 text-left mb-1 ml-4">
+                Start at:
+              </label>
+              <input
+                type="text"
+                name="startLocation"
+                value={tripData.startLocation}
+                onChange={handleInputChange}
+                className="w-full px-4 py-3 text-gray-900 bg-white border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter starting location"
+              />
+            </div>
+
+            {/* End Location */}
+            <div className="relative">
+              <label className="block text-sm font-medium text-gray-600 text-left mb-1 ml-4">
+                End at:
+              </label>
+              <input
+                type="text"
+                name="endLocation"
+                value={tripData.endLocation}
+                onChange={handleInputChange}
+                className="w-full px-4 py-3 text-gray-900 bg-white border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter destination"
+              />
+            </div>
+
+            {/* Dates/Duration */}
+            <div className="relative">
+              <label className="block text-sm font-medium text-gray-600 text-left mb-1 ml-4">
+                Dates / Duration
+              </label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowDateDropdown(!showDateDropdown)}
+                  className="w-full px-4 py-3 text-gray-900 bg-white border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between"
+                >
+                  <span>{tripData.duration} days</span>
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+                {showDateDropdown && (
+                  <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-10 mt-1">
+                    {['3', '5', '7', '10', '14', '21', '30'].map((days) => (
+                      <button
+                        key={days}
+                        onClick={() => {
+                          setTripData({ ...tripData, duration: days });
+                          setShowDateDropdown(false);
+                        }}
+                        className="w-full px-4 py-2 text-left hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg"
+                      >
+                        {days} days
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Travelers */}
+            <div className="relative">
+              <label className="block text-sm font-medium text-gray-600 text-left mb-1 ml-4">
+                Travelers:
+              </label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowTravelersDropdown(!showTravelersDropdown)}
+                  className="w-full px-4 py-3 text-gray-900 bg-white border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between"
+                >
+                  <span>Adults: {tripData.travelers}</span>
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+                {showTravelersDropdown && (
+                  <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-10 mt-1">
+                    {['1', '2', '3', '4', '5', '6+'].map((count) => (
+                      <button
+                        key={count}
+                        onClick={() => {
+                          setTripData({ ...tripData, travelers: count });
+                          setShowTravelersDropdown(false);
+                        }}
+                        className="w-full px-4 py-2 text-left hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg"
+                      >
+                        Adults: {count}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Start Planning Button */}
+            <div className="flex items-end">
+              <button
+                onClick={handlePlanTrip}
+                className="w-full bg-slate-700 text-white py-3 px-6 rounded-lg hover:bg-slate-800 transition-colors font-medium"
+              >
+                Start Planning
+              </button>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* Features Grid */}
