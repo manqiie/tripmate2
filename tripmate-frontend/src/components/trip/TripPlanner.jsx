@@ -1,4 +1,4 @@
-// src/components/trip/TripPlanner.jsx - FIXED VERSION
+          // src/components/trip/TripPlanner.jsx - FIXED VERSION
 import React, { useState } from 'react';
 import { MapPin, Calendar, Users, Plus, X, Route, Save, Clock } from 'lucide-react';
 import GoogleMap from '../maps/GoogleMap';
@@ -330,17 +330,23 @@ const TripPlanner = () => {
         <div className="bg-white rounded-xl shadow-lg p-6">
           <h3 className="text-xl font-bold text-gray-900 mb-4">Route Information</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-blue-50 p-4 rounded-lg">
+            <div className={`p-4 rounded-lg ${routeResult.isFlightRoute ? 'bg-orange-50' : 'bg-blue-50'}`}>
               <div className="flex items-center gap-2">
-                <Route className="w-5 h-5 text-blue-600" />
-                <span className="font-medium text-blue-800">Distance</span>
+                <Route className={`w-5 h-5 ${routeResult.isFlightRoute ? 'text-orange-600' : 'text-blue-600'}`} />
+                <span className={`font-medium ${routeResult.isFlightRoute ? 'text-orange-800' : 'text-blue-800'}`}>
+                  {routeResult.isFlightRoute ? 'Flight Distance' : 'Driving Distance'}
+                </span>
               </div>
-              <p className="text-2xl font-bold text-blue-900">{routeResult.totalDistance} km</p>
+              <p className={`text-2xl font-bold ${routeResult.isFlightRoute ? 'text-orange-900' : 'text-blue-900'}`}>
+                {routeResult.totalDistance} km
+              </p>
             </div>
             <div className="bg-green-50 p-4 rounded-lg">
               <div className="flex items-center gap-2">
                 <Clock className="w-5 h-5 text-green-600" />
-                <span className="font-medium text-green-800">Duration</span>
+                <span className="font-medium text-green-800">
+                  {routeResult.isFlightRoute ? 'Flight Time' : 'Driving Time'}
+                </span>
               </div>
               <p className="text-2xl font-bold text-green-900">
                 {Math.floor(routeResult.totalDuration / 60)}h {routeResult.totalDuration % 60}m
@@ -349,13 +355,34 @@ const TripPlanner = () => {
             <div className="bg-purple-50 p-4 rounded-lg">
               <div className="flex items-center gap-2">
                 <MapPin className="w-5 h-5 text-purple-600" />
-                <span className="font-medium text-purple-800">Stops</span>
+                <span className="font-medium text-purple-800">
+                  {routeResult.isFlightRoute ? 'Airports' : 'Stops'}
+                </span>
               </div>
               <p className="text-2xl font-bold text-purple-900">
                 {2 + tripData.waypoints.filter(wp => wp.trim() !== '').length}
               </p>
             </div>
           </div>
+          
+          {/* Flight Route Notice */}
+          {routeResult.isFlightRoute && (
+            <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-start gap-3">
+                <div className="text-yellow-600">✈️</div>
+                <div>
+                  <h4 className="font-medium text-yellow-800 mb-1">Flight Route Detected</h4>
+                  <p className="text-sm text-yellow-700">
+                    This route covers long distances across continents and requires air travel. 
+                    The map shows flight paths as dotted lines with estimated flight times.
+                  </p>
+                  <p className="text-xs text-yellow-600 mt-2">
+                    💡 Flight times are estimates based on commercial aviation speeds (~900 km/h)
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -363,7 +390,8 @@ const TripPlanner = () => {
       <div className="bg-white rounded-xl shadow-lg p-6">
         <h3 className="text-xl font-bold text-gray-900 mb-4">Route Map</h3>
         <GoogleMap
-          route={routeResult?.route}  /* FIXED: Pass the actual DirectionsResult */
+          route={routeResult?.route}
+          routeInfo={routeResult} // Pass the complete route info including flight status
           className="w-full h-96 rounded-lg"
         />
       </div>
