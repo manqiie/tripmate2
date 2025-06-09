@@ -1,11 +1,14 @@
-# tripmate_backend/trips/views.py - COMPLETE OPTIMIZED VERSION
-
+# trips/views.py - COMPLETE FILE with media views
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from django.db.models import Q, Sum, Count
-from .models import Trip
-from .serializers import TripSerializer, TripCreateSerializer, TripListSerializer
+from django.core.files.storage import default_storage
+from .models import Trip, TripMedia
+from .serializers import (
+    TripSerializer, TripCreateSerializer, TripListSerializer,
+    TripMediaSerializer, TripMediaCreateSerializer
+)
 
 class TripListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -93,3 +96,55 @@ def trip_stats(request):
             'total_duration': 0,
             'recent_trips': []
         })
+
+# Media views
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.IsAuthenticated])
+def trip_media(request, trip_id):
+    """Get or create media for a trip"""
+    try:
+        trip = Trip.objects.get(id=trip_id, user=request.user)
+    except Trip.DoesNotExist:
+        return Response({'error': 'Trip not found'}, status=404)
+    
+    if request.method == 'GET':
+        stop_index = request.query_params.get('stop_index')
+        media_queryset = trip.media.all()
+        
+        if stop_index is not None:
+            media_queryset = media_queryset.filter(stop_index=int(stop_index))
+        
+        serializer = TripMediaSerializer(
+            media_queryset, 
+            many=True, 
+            context={'request': request}
+        )
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        serializer = TripMediaCreateSerializer(data=request.data)
+        if serializer.is_valid():
+            media = serializer.save(trip=trip)
+            response_serializer = TripMediaSerializer(
+                media, 
+                context={'request': request}
+            )
+            return Response(response_serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def delete_trip_media(request, trip_id, media_id):
+    """Delete a specific media item"""
+    try:
+        trip = Trip.objects.get(id=trip_id, user=request.user)
+        media = trip.media.get(id=media_id)
+        
+        # Delete file from storage
+        if media.file:
+            default_storage.delete(media.file.name)
+        
+        media.delete()
+        return Response({'message': 'Media deleted successfully'})
+    except (Trip.DoesNotExist, TripMedia.DoesNotExist):
+        return Response({'error': 'Media not found'}, status=404)

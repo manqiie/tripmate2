@@ -1,7 +1,4 @@
-# Create a new Django app: trips
-# Run: python manage.py startapp trips
-
-# trips/models.py
+# trips/models.py - COMPLETE FILE with TripMedia model
 from django.db import models
 from django.contrib.auth import get_user_model
 
@@ -34,30 +31,25 @@ class Trip(models.Model):
             return (self.end_date - self.start_date).days + 1
         return 0
 
-# trips/admin.py
-from django.contrib import admin
-from .models import Trip
-
-@admin.register(Trip)
-class TripAdmin(admin.ModelAdmin):
-    list_display = ('title', 'user', 'start_location', 'end_location', 'start_date', 'end_date', 'created_at')
-    list_filter = ('created_at', 'start_date', 'end_date')
-    search_fields = ('title', 'user__username', 'user__email', 'start_location', 'end_location')
-    readonly_fields = ('created_at', 'updated_at')
+class TripMedia(models.Model):
+    MEDIA_TYPES = [
+        ('photo', 'Photo'),
+        ('video', 'Video'),
+        ('audio', 'Audio'),
+    ]
     
-    fieldsets = (
-        ('Basic Information', {
-            'fields': ('user', 'title', 'start_location', 'end_location')
-        }),
-        ('Trip Details', {
-            'fields': ('start_date', 'end_date', 'travelers', 'waypoints')
-        }),
-        ('Route Information', {
-            'fields': ('total_distance', 'total_duration', 'route_data'),
-            'classes': ('collapse',)
-        }),
-        ('Timestamps', {
-            'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',)
-        }),
-    )
+    trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name='media')
+    stop_index = models.IntegerField()  # Which stop this media belongs to
+    media_type = models.CharField(max_length=10, choices=MEDIA_TYPES)
+    file = models.FileField(upload_to='trip_media/')
+    title = models.CharField(max_length=200, blank=True)
+    description = models.TextField(blank=True)
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
+    taken_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-taken_at']
+    
+    def __str__(self):
+        return f"{self.trip.title} - {self.get_media_type_display()}"

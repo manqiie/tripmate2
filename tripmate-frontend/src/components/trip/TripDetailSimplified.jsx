@@ -1,10 +1,11 @@
-// src/components/trip/TripDetailSimplified.jsx - Enhanced with expandable stops
+// src/components/trip/TripDetailSimplified.jsx - COMPLETE FILE with TripMemories
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, MapPin, Calendar, Users, Clock, Route, ChevronDown, ChevronUp, Star, Search } from 'lucide-react';
 import GoogleMap from '../maps/GoogleMap';
 import ModernPlaceSearch from '../places/ModernPlaceSearch';
 import FavoritesManager from '../places/FavoritesManager';
+import TripMemories from '../media/TripMemories';
 import api from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import googleMapsService from '../../services/googleMaps';
@@ -23,7 +24,7 @@ const TripDetailSimplified = () => {
   const [selectedStop, setSelectedStop] = useState(0);
   const [route, setRoute] = useState(null);
   const [routeInfo, setRouteInfo] = useState(null);
-  const [mapMode, setMapMode] = useState('route'); // 'route' or 'stop'
+  const [mapMode, setMapMode] = useState('route');
   const [stopCoordinates, setStopCoordinates] = useState([]);
   
   // Expandable stops state
@@ -107,7 +108,6 @@ const TripDetailSimplified = () => {
           coordinates.push(coords);
         } catch (error) {
           console.warn(`❌ Failed to geocode ${location}:`, error);
-          // Provide fallback coordinates based on common locations
           const fallbackCoords = getFallbackCoordinates(location);
           console.log(`🔄 Using fallback coordinates for ${location}:`, fallbackCoords);
           coordinates.push(fallbackCoords);
@@ -621,6 +621,15 @@ const TripDetailSimplified = () => {
           </div>
         </div>
       </div>
+
+      {/* Trip Memories Component - positioned above Trip Summary */}
+      <TripMemories 
+        tripId={trip.id} 
+        stops={stops} 
+        stopCoordinates={stopCoordinates}
+        selectedStop={selectedStop}
+        onStopSelect={setSelectedStop}
+      />
 
       {/* Trip Summary */}
       <div className="bg-white rounded-xl shadow-lg p-6">
