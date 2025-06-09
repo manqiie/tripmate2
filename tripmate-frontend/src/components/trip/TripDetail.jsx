@@ -1,4 +1,42 @@
-// src/components/trip/TripDetail.jsx - FIXED VERSION for flight routes
+const renderDrivingRoute = () => {
+    try {
+      console.log('🚗 Rendering driving route...');
+      
+      // Clear any existing flight paths and markers
+      clearFlightPaths();
+      clearMarkers();
+
+      // Use standard DirectionsRenderer for driving routes
+      if (directionsRendererRef.current) {
+        directionsRendererRef.current.setMap(null);
+      }
+
+      const renderer = new window.google.maps.DirectionsRenderer({
+        draggable: false,
+        polylineOptions: {
+          strokeColor: '#2563eb',
+          strokeWeight: 5,
+          strokeOpacity: 0.8,
+        },
+        suppressMarkers: false,
+        preserveViewport: false,
+      });
+
+      renderer.setMap(mapInstanceRef.current);
+      renderer.setDirections(route);
+      directionsRendererRef.current = renderer;
+
+      if (route.routes[0]?.bounds) {
+        mapInstanceRef.current.fitBounds(route.routes[0].bounds);
+      }
+
+      console.log('✅ Driving route rendered successfully');
+
+    } catch (err) {
+      console.error('❌ Driving route rendering failed:', err);
+      setError(`Driving route rendering failed: ${err.message}`);
+    }
+  };// src/components/trip/TripDetail.jsx - Enhanced with stop focus functionality
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, MapPin, Calendar, Users, Clock, Route, Star, Camera, Coffee, Utensils, Bed } from 'lucide-react';
@@ -10,21 +48,26 @@ import googleMapsService from '../../services/googleMaps';
 const TripDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [trip, setTrip] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedStop, setSelectedStop] = useState(0);
   const [route, setRoute] = useState(null);
   const [routeInfo, setRouteInfo] = useState(null);
+  const [mapMode, setMapMode] = useState('route'); // 'route' or 'stop'
+  const [stopCoordinates, setStopCoordinates] = useState([]);
 
   useEffect(() => {
+    // Wait for auth context to load before checking user
+    if (authLoading) return;
+    
     if (!user) {
       navigate('/auth');
       return;
     }
     fetchTripDetail();
-  }, [id, user]);
+  }, [id, user, authLoading]);
 
   const fetchTripDetail = async () => {
     try {
@@ -38,7 +81,7 @@ const TripDetail = () => {
           const parsedRoute = JSON.parse(tripData.route_data);
           setRoute(parsedRoute);
           
-          // FIXED: Reconstruct route info for flight routes
+          // Reconstruct route info for flight routes
           await reconstructRouteInfo(tripData, parsedRoute);
           
         } catch (e) {
@@ -53,42 +96,45 @@ const TripDetail = () => {
     }
   };
 
-  // FIXED: Reconstruct the route info including coordinates for flight routes
+  // Reconstruct the route info including coordinates for flight routes
   const reconstructRouteInfo = async (tripData, parsedRoute) => {
     try {
       console.log('🔧 Reconstructing route info for trip:', tripData.title);
       
       const isFlightRoute = tripData.total_distance > 3000;
       
+      // Geocode all locations to get coordinates for both route and individual stops
+      const locations = [
+        tripData.start_location,
+        ...(tripData.waypoints || []).filter(wp => wp && wp.trim()),
+        tripData.end_location
+      ];
+
+      console.log('📍 Geocoding locations:', locations);
+      
+      const coordinates = [];
+      for (const location of locations) {
+        try {
+          const coords = await googleMapsService.geocodeAddress(location);
+          coordinates.push(coords);
+          console.log(`✅ Geocoded ${location}:`, coords);
+        } catch (error) {
+          console.warn(`⚠️ Failed to geocode ${location}:`, error);
+          // Use a fallback coordinate if geocoding fails
+          coordinates.push({
+            lat: 0,
+            lng: 0,
+            formatted_address: location
+          });
+        }
+      }
+
+      // Store coordinates for individual stop viewing
+      setStopCoordinates(coordinates);
+
       if (isFlightRoute) {
         console.log('✈️ Reconstructing flight route...');
         
-        // Geocode all locations to get coordinates
-        const locations = [
-          tripData.start_location,
-          ...(tripData.waypoints || []).filter(wp => wp && wp.trim()),
-          tripData.end_location
-        ];
-
-        console.log('📍 Geocoding locations:', locations);
-        
-        const coordinates = [];
-        for (const location of locations) {
-          try {
-            const coords = await googleMapsService.geocodeAddress(location);
-            coordinates.push(coords);
-            console.log(`✅ Geocoded ${location}:`, coords);
-          } catch (error) {
-            console.warn(`⚠️ Failed to geocode ${location}:`, error);
-            // Use a fallback coordinate if geocoding fails
-            coordinates.push({
-              lat: 0,
-              lng: 0,
-              formatted_address: location
-            });
-          }
-        }
-
         // Calculate bounds for flight route
         let bounds = null;
         if (coordinates.length > 0) {
@@ -126,6 +172,7 @@ const TripDetail = () => {
         setRouteInfo({
           isFlightRoute: false,
           routeType: 'driving',
+          coordinates: coordinates,
           totalDistance: tripData.total_distance,
           totalDuration: tripData.total_duration
         });
@@ -140,6 +187,50 @@ const TripDetail = () => {
         totalDistance: tripData.total_distance,
         totalDuration: tripData.total_duration
       });
+    }
+  };
+
+  // Handle stop selection
+  const handleStopClick = (stopIndex) => {
+    console.log('🎯 Stop clicked:', stopIndex);
+    setSelectedStop(stopIndex);
+    
+    // If we have coordinates for this stop, switch to stop mode
+    if (stopCoordinates && stopCoordinates[stopIndex]) {
+      setMapMode('stop');
+      console.log('📍 Switching to stop mode for:', stopCoordinates[stopIndex]);
+    }
+  };
+
+  // Handle showing full route
+  const showFullRoute = () => {
+    console.log('🗺️ Showing full route');
+    setMapMode('route');
+  };
+
+  // Get map configuration based on current mode
+  const getMapConfig = () => {
+    if (mapMode === 'stop' && stopCoordinates && stopCoordinates[selectedStop]) {
+      const stopCoord = stopCoordinates[selectedStop];
+      return {
+        center: { lat: stopCoord.lat, lng: stopCoord.lng },
+        zoom: 14, // Closer zoom for individual stops
+        route: null,
+        routeInfo: null,
+        markers: [{
+          position: { lat: stopCoord.lat, lng: stopCoord.lng },
+          title: stopCoord.formatted_address || stops[selectedStop]?.name || 'Stop Location'
+        }]
+      };
+    } else {
+      // Show full route
+      return {
+        center: null, // Let the map auto-center based on route
+        zoom: 10,
+        route: route,
+        routeInfo: routeInfo,
+        markers: []
+      };
     }
   };
 
@@ -196,6 +287,7 @@ const TripDetail = () => {
   };
 
   const stops = getStops();
+  const mapConfig = getMapConfig();
 
   // Simple recommendations based on location type
   const getRecommendations = (stop) => {
@@ -209,12 +301,14 @@ const TripDetail = () => {
     return recommendations;
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="flex justify-center items-center min-h-[60vh]">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-          <p className="text-gray-600">Loading trip details...</p>
+          <p className="text-gray-600">
+            {authLoading ? 'Checking authentication...' : 'Loading trip details...'}
+          </p>
         </div>
       </div>
     );
@@ -333,27 +427,50 @@ const TripDetail = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[600px]">
         {/* Left Side - Stops List */}
         <div className="bg-white rounded-xl shadow-lg p-6 overflow-y-auto">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">
-            Route Stops ({stops.length})
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-gray-900">
+              Route Stops ({stops.length})
+            </h2>
+            
+            {/* View Toggle */}
+            <div className="flex gap-2">
+              <button
+                onClick={showFullRoute}
+                className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+                  mapMode === 'route' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                Full Route
+              </button>
+              <span className="text-sm text-gray-500 self-center">
+                {mapMode === 'stop' ? `Viewing: Stop ${selectedStop + 1}` : 'All Stops'}
+              </span>
+            </div>
+          </div>
           
           <div className="space-y-3">
             {stops.map((stop, index) => (
               <div
                 key={stop.id}
-                onClick={() => setSelectedStop(index)}
+                onClick={() => handleStopClick(index)}
                 className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
                   selectedStop === index
-                    ? 'border-blue-500 bg-blue-50'
+                    ? mapMode === 'stop'
+                      ? 'border-green-500 bg-green-50'
+                      : 'border-blue-500 bg-blue-50'
                     : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                 }`}
               >
                 <div className="flex items-start gap-3">
                   {/* Stop Number/Icon */}
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                    stop.type === 'start' ? 'bg-green-500 text-white' :
-                    stop.type === 'end' ? 'bg-red-500 text-white' :
-                    'bg-blue-500 text-white'
+                    selectedStop === index && mapMode === 'stop'
+                      ? 'bg-green-500 text-white'
+                      : stop.type === 'start' ? 'bg-green-500 text-white' :
+                        stop.type === 'end' ? 'bg-red-500 text-white' :
+                        'bg-blue-500 text-white'
                   }`}>
                     {stop.type === 'start' ? 'S' : 
                      stop.type === 'end' ? 'E' : 
@@ -363,6 +480,11 @@ const TripDetail = () => {
                   <div className="flex-1">
                     <h3 className="font-semibold text-gray-900 mb-1">{stop.name}</h3>
                     <p className="text-sm text-gray-600 mb-3">{stop.description}</p>
+                    
+                    {/* Click hint */}
+                    <div className="text-xs text-blue-600 mb-2">
+                      💡 Click to view on map
+                    </div>
 
                     {/* Recommendations - Only show when selected */}
                     {selectedStop === index && (
@@ -401,16 +523,31 @@ const TripDetail = () => {
         <div className="bg-white rounded-xl shadow-lg p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-gray-900">Route Map</h2>
-            <div className="text-sm text-gray-600">
-              Viewing: {stops[selectedStop]?.name}
+            <div className="flex items-center gap-3">
+              {mapMode === 'stop' && (
+                <button
+                  onClick={showFullRoute}
+                  className="text-sm text-blue-600 hover:text-blue-700 underline"
+                >
+                  ← Back to Full Route
+                </button>
+              )}
+              <div className="text-sm text-gray-600">
+                {mapMode === 'stop' 
+                  ? `📍 ${stops[selectedStop]?.name}` 
+                  : `🗺️ Complete Route`
+                }
+              </div>
             </div>
           </div>
           
           <div className="h-full">
-            {/* FIXED: Pass the reconstructed routeInfo to GoogleMap */}
             <GoogleMap
-              route={route}
-              routeInfo={routeInfo} // This now includes coordinates for flight routes
+              center={mapConfig.center}
+              zoom={mapConfig.zoom}
+              route={mapConfig.route}
+              routeInfo={mapConfig.routeInfo}
+              markers={mapConfig.markers}
               className="w-full h-[500px] rounded-lg"
             />
           </div>
