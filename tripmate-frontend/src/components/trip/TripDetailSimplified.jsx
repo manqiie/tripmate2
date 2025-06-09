@@ -1,14 +1,13 @@
-// src/components/trip/TripDetailSimplified.jsx - Simplified and modular version
+// src/components/trip/TripDetailSimplified.jsx - Enhanced with expandable stops
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Calendar, Users, Clock, Route } from 'lucide-react';
+import { ArrowLeft, MapPin, Calendar, Users, Clock, Route, ChevronDown, ChevronUp, Star, Search } from 'lucide-react';
 import GoogleMap from '../maps/GoogleMap';
-import StopPanel from '../places/StopPanel';
-import placesService from '../../services/placesService';
+import ModernPlaceSearch from '../places/ModernPlaceSearch';
+import FavoritesManager from '../places/FavoritesManager';
 import api from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import googleMapsService from '../../services/googleMaps';
-import DebugSearchTest from '../test/DebugSearchTest';
 
 const TripDetailSimplified = () => {
   const { id } = useParams();
@@ -27,8 +26,11 @@ const TripDetailSimplified = () => {
   const [mapMode, setMapMode] = useState('route'); // 'route' or 'stop'
   const [stopCoordinates, setStopCoordinates] = useState([]);
   
-  // Places API state
-  const [placesReady, setPlacesReady] = useState(false);
+  // Expandable stops state
+  const [expandedStop, setExpandedStop] = useState(null);
+  
+  // Favorites state (per stop)
+  const [favoritesByStop, setFavoritesByStop] = useState({});
 
   useEffect(() => {
     if (authLoading) return;
@@ -37,13 +39,29 @@ const TripDetailSimplified = () => {
       return;
     }
     fetchTripDetail();
-    initializePlaces();
+    loadAllFavorites();
   }, [id, user, authLoading]);
 
-  const initializePlaces = async () => {
-    // Since Places API works via REST (user confirmed), force enable it
-    setPlacesReady(true);
-    console.log('✅ Places API enabled (confirmed working via REST)');
+  // Load favorites for all stops
+  const loadAllFavorites = () => {
+    const savedFavorites = localStorage.getItem('tripmate_favorites_by_stop');
+    if (savedFavorites) {
+      try {
+        setFavoritesByStop(JSON.parse(savedFavorites));
+      } catch (e) {
+        console.error('Error loading favorites:', e);
+      }
+    }
+  };
+
+  // Save favorites for a specific stop
+  const saveFavoritesForStop = (stopIndex, favorites) => {
+    const newFavoritesByStop = {
+      ...favoritesByStop,
+      [`${id}_${stopIndex}`]: favorites
+    };
+    setFavoritesByStop(newFavoritesByStop);
+    localStorage.setItem('tripmate_favorites_by_stop', JSON.stringify(newFavoritesByStop));
   };
 
   const fetchTripDetail = async () => {
@@ -78,20 +96,25 @@ const TripDetailSimplified = () => {
         tripData.end_location
       ];
 
+      console.log('🗺️ Geocoding locations:', locations);
+
       const coordinates = [];
-      for (const location of locations) {
+      for (const [index, location] of locations.entries()) {
         try {
+          console.log(`🔍 Geocoding ${index + 1}/${locations.length}: ${location}`);
           const coords = await googleMapsService.geocodeAddress(location);
+          console.log(`✅ Geocoded ${location}:`, coords);
           coordinates.push(coords);
         } catch (error) {
-          console.warn(`Failed to geocode ${location}:`, error);
-          coordinates.push({
-            lat: 0, lng: 0,
-            formatted_address: location
-          });
+          console.warn(`❌ Failed to geocode ${location}:`, error);
+          // Provide fallback coordinates based on common locations
+          const fallbackCoords = getFallbackCoordinates(location);
+          console.log(`🔄 Using fallback coordinates for ${location}:`, fallbackCoords);
+          coordinates.push(fallbackCoords);
         }
       }
 
+      console.log('🗺️ Final coordinates array:', coordinates);
       setStopCoordinates(coordinates);
 
       const routeInfo = {
@@ -107,6 +130,52 @@ const TripDetailSimplified = () => {
     } catch (error) {
       console.error('Failed to reconstruct route info:', error);
     }
+  };
+
+  // Fallback coordinates for common locations when geocoding fails
+  const getFallbackCoordinates = (location) => {
+    const fallbacks = {
+      'singapore': { lat: 1.3521, lng: 103.8198, formatted_address: 'Singapore' },
+      'malaysia': { lat: 3.1390, lng: 101.6869, formatted_address: 'Kuala Lumpur, Malaysia' },
+      'kuala lumpur': { lat: 3.1390, lng: 101.6869, formatted_address: 'Kuala Lumpur, Malaysia' },
+      'taiwan': { lat: 25.0330, lng: 121.5654, formatted_address: 'Taipei, Taiwan' },
+      'taipei': { lat: 25.0330, lng: 121.5654, formatted_address: 'Taipei, Taiwan' },
+      'japan': { lat: 35.6762, lng: 139.6503, formatted_address: 'Tokyo, Japan' },
+      'tokyo': { lat: 35.6762, lng: 139.6503, formatted_address: 'Tokyo, Japan' },
+      'osaka': { lat: 34.6937, lng: 135.5023, formatted_address: 'Osaka, Japan' },
+      'kyoto': { lat: 35.0116, lng: 135.7681, formatted_address: 'Kyoto, Japan' },
+      'hong kong': { lat: 22.3193, lng: 114.1694, formatted_address: 'Hong Kong' },
+      'thailand': { lat: 13.7563, lng: 100.5018, formatted_address: 'Bangkok, Thailand' },
+      'bangkok': { lat: 13.7563, lng: 100.5018, formatted_address: 'Bangkok, Thailand' },
+      'philippines': { lat: 14.5995, lng: 120.9842, formatted_address: 'Manila, Philippines' },
+      'manila': { lat: 14.5995, lng: 120.9842, formatted_address: 'Manila, Philippines' },
+      'indonesia': { lat: -6.2088, lng: 106.8456, formatted_address: 'Jakarta, Indonesia' },
+      'jakarta': { lat: -6.2088, lng: 106.8456, formatted_address: 'Jakarta, Indonesia' },
+      'vietnam': { lat: 21.0285, lng: 105.8542, formatted_address: 'Hanoi, Vietnam' },
+      'hanoi': { lat: 21.0285, lng: 105.8542, formatted_address: 'Hanoi, Vietnam' },
+      'ho chi minh': { lat: 10.8231, lng: 106.6297, formatted_address: 'Ho Chi Minh City, Vietnam' }
+    };
+
+    const key = location.toLowerCase().trim();
+    
+    // Direct match
+    if (fallbacks[key]) {
+      return fallbacks[key];
+    }
+    
+    // Partial match
+    for (const [fallbackKey, coords] of Object.entries(fallbacks)) {
+      if (key.includes(fallbackKey) || fallbackKey.includes(key)) {
+        return coords;
+      }
+    }
+    
+    // Default fallback (Singapore)
+    return {
+      lat: 1.3521,
+      lng: 103.8198,
+      formatted_address: location || 'Unknown Location'
+    };
   };
 
   const calculateBounds = (coordinates) => {
@@ -169,6 +238,43 @@ const TripDetailSimplified = () => {
 
   const showFullRoute = () => {
     setMapMode('route');
+    setExpandedStop(null);
+  };
+
+  // Handle expanding/collapsing stops
+  const toggleStopExpansion = (stopIndex) => {
+    if (expandedStop === stopIndex) {
+      setExpandedStop(null);
+    } else {
+      setExpandedStop(stopIndex);
+      setSelectedStop(stopIndex);
+      if (stopCoordinates && stopCoordinates[stopIndex]) {
+        setMapMode('stop');
+      }
+    }
+  };
+
+  // Handle favorites for specific stop
+  const handleToggleFavorite = (stopIndex, place) => {
+    const stopKey = `${id}_${stopIndex}`;
+    const currentFavorites = favoritesByStop[stopKey] || [];
+    const existingIndex = currentFavorites.findIndex(fav => fav.id === place.id);
+    
+    let newFavorites;
+    if (existingIndex >= 0) {
+      newFavorites = currentFavorites.filter(fav => fav.id !== place.id);
+    } else {
+      newFavorites = [...currentFavorites, place];
+    }
+    
+    saveFavoritesForStop(stopIndex, newFavorites);
+  };
+
+  const handleRemoveFavorite = (stopIndex, place) => {
+    const stopKey = `${id}_${stopIndex}`;
+    const currentFavorites = favoritesByStop[stopKey] || [];
+    const newFavorites = currentFavorites.filter(fav => fav.id !== place.id);
+    saveFavoritesForStop(stopIndex, newFavorites);
   };
 
   const getMapConfig = () => {
@@ -209,6 +315,24 @@ const TripDetailSimplified = () => {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     return `${hours}h ${mins}m`;
+  };
+
+  const getStopIcon = (stop, index) => {
+    if (stop.type === 'start') return 'S';
+    if (stop.type === 'end') return 'E';
+    return index;
+  };
+
+  const getStopIconColor = (stop, index) => {
+    if (selectedStop === index && mapMode === 'stop') {
+      return 'bg-green-500 text-white';
+    }
+    
+    switch (stop.type) {
+      case 'start': return 'bg-green-500 text-white';
+      case 'end': return 'bg-red-500 text-white';
+      default: return 'bg-blue-500 text-white';
+    }
   };
 
   if (authLoading || loading) {
@@ -317,9 +441,6 @@ const TripDetailSimplified = () => {
           </div>
         </div>
 
-        {/* Debug Test - Remove after fixing */}
-        <DebugSearchTest />
-
         {/* Flight Route Notice */}
         {routeInfo?.isFlightRoute && (
           <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -335,21 +456,136 @@ const TripDetailSimplified = () => {
             </div>
           </div>
         )}
-
-        {/* Places API Status - removed since we know it works */}
       </div>
 
       {/* Main Content - Stops and Map */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[600px]">
-        {/* Left Side - Stops List with Places */}
-        <StopPanel
-          stops={stops}
-          selectedStop={selectedStop}
-          onStopClick={handleStopClick}
-          onShowFullRoute={showFullRoute}
-          stopCoordinates={stopCoordinates}
-          mapMode={mapMode}
-        />
+        {/* Left Side - Expandable Stops List */}
+        <div className="bg-white rounded-xl shadow-lg p-6 overflow-y-auto">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-gray-900">
+              Route Stops ({stops.length})
+            </h2>
+            
+            {/* View Toggle */}
+            <div className="flex gap-2">
+              <button
+                onClick={showFullRoute}
+                className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+                  mapMode === 'route' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                Full Route
+              </button>
+              <span className="text-sm text-gray-500 self-center">
+                {mapMode === 'stop' ? `Stop ${selectedStop + 1}` : 'All Stops'}
+              </span>
+            </div>
+          </div>
+          
+          {/* Expandable Stops */}
+          <div className="space-y-3">
+            {stops.map((stop, index) => {
+              const isExpanded = expandedStop === index;
+              const stopKey = `${id}_${index}`;
+              const stopFavorites = favoritesByStop[stopKey] || [];
+              const currentLocation = stopCoordinates[index];
+              
+              return (
+                <div
+                  key={stop.id}
+                  className={`rounded-lg border-2 transition-all ${
+                    selectedStop === index
+                      ? mapMode === 'stop'
+                        ? 'border-green-500 bg-green-50'
+                        : 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  {/* Stop Header */}
+                  <div
+                    onClick={() => handleStopClick(index)}
+                    className="p-4 cursor-pointer"
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* Stop Number/Icon */}
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                        getStopIconColor(stop, index)
+                      }`}>
+                        {getStopIcon(stop, index)}
+                      </div>
+
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-gray-900 mb-1">{stop.name}</h3>
+                        <p className="text-sm text-gray-600 mb-2">{stop.description}</p>
+                        
+                        {/* Favorites count */}
+                        {stopFavorites.length > 0 && (
+                          <div className="flex items-center gap-1 text-xs text-blue-600 mb-2">
+                            <Star className="w-3 h-3 fill-current" />
+                            <span>{stopFavorites.length} saved place{stopFavorites.length !== 1 ? 's' : ''}</span>
+                          </div>
+                        )}
+                        
+                        {/* Click hints */}
+                        <div className="text-xs text-blue-600">
+                          💡 Click to view on map
+                        </div>
+                      </div>
+
+                      {/* Expand/Collapse button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleStopExpansion(index);
+                        }}
+                        className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                      >
+                        {isExpanded ? (
+                          <ChevronUp className="w-5 h-5" />
+                        ) : (
+                          <ChevronDown className="w-5 h-5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Expanded Content */}
+                  {isExpanded && currentLocation && (
+                    <div className="px-4 pb-4 border-t border-gray-200 bg-gray-50">
+                      <div className="pt-4 space-y-4">
+                        <h4 className="font-medium text-gray-800 flex items-center gap-2">
+                          <Search className="w-4 h-4" />
+                          Explore {stop.name}
+                        </h4>
+                        
+                        {/* Places Search */}
+                        <ModernPlaceSearch
+                          location={currentLocation}
+                          favorites={stopFavorites}
+                          onToggleFavorite={(place) => handleToggleFavorite(index, place)}
+                        />
+                        
+                        {/* Favorites for this stop */}
+                        {stopFavorites.length > 0 && (
+                          <div className="mt-4">
+                            <FavoritesManager
+                              favorites={stopFavorites}
+                              onRemoveFavorite={(place) => handleRemoveFavorite(index, place)}
+                              onPlaceSelect={(place) => console.log('Selected place:', place)}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
         {/* Right Side - Map */}
         <div className="bg-white rounded-xl shadow-lg p-6">
