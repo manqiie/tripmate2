@@ -1,5 +1,5 @@
-// src/components/maps/GoogleMap.jsx - FIXED VERSION for flight routes
-import React, { useEffect, useRef, useState } from 'react';
+// src/components/maps/GoogleMap.jsx - FIXED VERSION to prevent multiple API loads
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import googleMapsService from '../../services/googleMaps';
 
 const GoogleMap = ({ 
@@ -15,88 +15,173 @@ const GoogleMap = ({
   const mapInstanceRef = useRef(null);
   const directionsRendererRef = useRef(null);
   const flightPathRef = useRef([]);
+  const markersRef = useRef([]);
+  
   const [isLoaded, setIsLoaded] = useState(false);
   const [apiLoaded, setApiLoaded] = useState(false);
   const [error, setError] = useState(null);
 
-  // Load Google Maps API first
+  // Memoize center to prevent unnecessary re-renders
+  const memoizedCenter = useMemo(() => center, [center?.lat, center?.lng]);
+  
+  // Memoize route info to prevent unnecessary re-renders
+  const memoizedRouteInfo = useMemo(() => routeInfo, [
+    routeInfo?.isFlightRoute,
+    routeInfo?.routeType,
+    JSON.stringify(routeInfo?.coordinates)
+  ]);
+
+  // Load Google Maps API only once
   useEffect(() => {
+    let isMounted = true;
+    
     const loadAPI = async () => {
       try {
-        await googleMapsService.loadGoogleMaps();
-        setApiLoaded(true);
-      } catch (err) {
-        setError(`Failed to load Google Maps: ${err.message}`);
-      }
-    };
-
-    if (!window.google?.maps) {
-      loadAPI();
-    } else {
-      setApiLoaded(true);
-    }
-  }, []);
-
-  // Initialize map after API is loaded
-  useEffect(() => {
-    if (!apiLoaded) return;
-
-    const initMap = () => {
-      if (!mapRef.current || !window.google?.maps) return;
-
-      try {
-        const map = new window.google.maps.Map(mapRef.current, {
-          center,
-          zoom,
-          mapTypeControl: true,
-          streetViewControl: true,
-          fullscreenControl: true,
-          zoomControl: true,
-        });
-
-        mapInstanceRef.current = map;
+        console.log('🗺️ GoogleMap: Checking API status...');
         
-        const checkMapReady = () => {
-          if (map.getDiv() && map.getDiv().offsetWidth > 0) {
-            setIsLoaded(true);
-          } else {
-            setTimeout(checkMapReady, 100);
+        // Check if already loaded
+        if (window.google?.maps) {
+          console.log('✅ GoogleMap: API already available');
+          if (isMounted) {
+            setApiLoaded(true);
           }
-        };
-        
-        checkMapReady();
-
-        if (onMapClick) {
-          map.addListener('click', onMapClick);
+          return;
         }
 
+        console.log('📦 GoogleMap: Loading Google Maps API...');
+        await googleMapsService.loadGoogleMaps();
+        
+        if (isMounted) {
+          console.log('✅ GoogleMap: API loaded successfully');
+          setApiLoaded(true);
+        }
       } catch (err) {
-        setError(err.message);
+        console.error('❌ GoogleMap: Failed to load API:', err);
+        if (isMounted) {
+          setError(`Failed to load Google Maps: ${err.message}`);
+        }
       }
     };
 
-    initMap();
-  }, [apiLoaded, center, zoom, onMapClick]);
+    loadAPI();
 
-  // Render route when ready
+    return () => {
+      isMounted = false;
+    };
+  }, []); // Empty dependency array - load only once
+
+  // Initialize map when API is loaded and ref is available
   useEffect(() => {
-    if (!isLoaded || !mapInstanceRef.current || !route) return;
+    if (!apiLoaded || !mapRef.current || mapInstanceRef.current) {
+      return;
+    }
 
-    const isFlightRoute = routeInfo?.isFlightRoute || routeInfo?.routeType === 'flight';
+    console.log('🗺️ GoogleMap: Initializing map...');
+
+    try {
+      const map = new window.google.maps.Map(mapRef.current, {
+        center: memoizedCenter,
+        zoom,
+        mapTypeControl: true,
+        streetViewControl: true,
+        fullscreenControl: true,
+        zoomControl: true,
+      });
+
+      mapInstanceRef.current = map;
+      
+      // Add click listener if provided
+      if (onMapClick) {
+        map.addListener('click', onMapClick);
+      }
+
+      // Wait for map to be ready
+      const checkMapReady = () => {
+        if (map.getDiv() && map.getDiv().offsetWidth > 0) {
+          console.log('✅ GoogleMap: Map initialized and ready');
+          setIsLoaded(true);
+        } else {
+          setTimeout(checkMapReady, 100);
+        }
+      };
+      
+      checkMapReady();
+
+    } catch (err) {
+      console.error('❌ GoogleMap: Map initialization failed:', err);
+      setError(`Map initialization failed: ${err.message}`);
+    }
+  }, [apiLoaded, memoizedCenter, zoom, onMapClick]);
+
+  // Handle route rendering
+  useEffect(() => {
+    if (!isLoaded || !mapInstanceRef.current || !route) {
+      return;
+    }
+
+    console.log('🛣️ GoogleMap: Rendering route...');
+
+    const isFlightRoute = memoizedRouteInfo?.isFlightRoute || memoizedRouteInfo?.routeType === 'flight';
     
     if (isFlightRoute) {
       renderFlightRoute();
     } else {
       renderDrivingRoute();
     }
-  }, [route, routeInfo, isLoaded]);
+  }, [route, memoizedRouteInfo, isLoaded]);
 
-  const renderDrivingRoute = () => {
+  // Handle markers
+  useEffect(() => {
+    if (!isLoaded || !mapInstanceRef.current) {
+      return;
+    }
+
+    console.log('📍 GoogleMap: Updating markers...');
+    
+    // Clear existing markers
+    clearMarkers();
+
+    // Add new markers
+    markers.forEach(markerData => {
+      const marker = new window.google.maps.Marker({
+        position: markerData.position,
+        map: mapInstanceRef.current,
+        title: markerData.title,
+        icon: markerData.icon
+      });
+      markersRef.current.push(marker);
+    });
+
+  }, [markers, isLoaded]);
+
+  // Clear markers helper
+  const clearMarkers = useCallback(() => {
+    markersRef.current.forEach(marker => {
+      if (marker && marker.setMap) {
+        marker.setMap(null);
+      }
+    });
+    markersRef.current = [];
+  }, []);
+
+  // Clear flight paths helper
+  const clearFlightPaths = useCallback(() => {
+    console.log('🧹 Clearing existing flight paths, count:', flightPathRef.current.length);
+    flightPathRef.current.forEach(item => {
+      if (item && item.setMap) {
+        item.setMap(null);
+      }
+    });
+    flightPathRef.current = [];
+  }, []);
+
+  const renderDrivingRoute = useCallback(() => {
     try {
       console.log('🚗 Rendering driving route...');
       
-      // Clear any existing flight paths
+      // Clear any existing flight paths and markers
       clearFlightPaths();
+      clearMarkers();
 
       // Use standard DirectionsRenderer for driving routes
       if (directionsRendererRef.current) {
@@ -128,13 +213,11 @@ const GoogleMap = ({
       console.error('❌ Driving route rendering failed:', err);
       setError(`Driving route rendering failed: ${err.message}`);
     }
-  };
+  }, [route, clearFlightPaths, clearMarkers]);
 
-  const renderFlightRoute = () => {
+  const renderFlightRoute = useCallback(() => {
     try {
       console.log('✈️ Rendering flight route...');
-      console.log('Flight route data:', route);
-      console.log('Route info:', routeInfo);
       
       // Clear existing driving route
       if (directionsRendererRef.current) {
@@ -143,14 +226,14 @@ const GoogleMap = ({
 
       clearFlightPaths();
 
-      // FIXED: Use coordinates from routeInfo instead of trying to extract from legs
-      if (routeInfo?.coordinates && routeInfo.coordinates.length >= 2) {
-        console.log('✅ Using coordinates from routeInfo:', routeInfo.coordinates);
+      // Use coordinates from routeInfo
+      if (memoizedRouteInfo?.coordinates && memoizedRouteInfo.coordinates.length >= 2) {
+        console.log('✅ Using coordinates from routeInfo:', memoizedRouteInfo.coordinates);
         
         // Create flight path segments between consecutive coordinates
-        for (let i = 0; i < routeInfo.coordinates.length - 1; i++) {
-          const start = routeInfo.coordinates[i];
-          const end = routeInfo.coordinates[i + 1];
+        for (let i = 0; i < memoizedRouteInfo.coordinates.length - 1; i++) {
+          const start = memoizedRouteInfo.coordinates[i];
+          const end = memoizedRouteInfo.coordinates[i + 1];
           
           console.log(`Creating flight segment ${i + 1}: from`, start, 'to', end);
           
@@ -190,8 +273,8 @@ const GoogleMap = ({
         }
 
         // Add markers for start and end points
-        const startCoord = routeInfo.coordinates[0];
-        const endCoord = routeInfo.coordinates[routeInfo.coordinates.length - 1];
+        const startCoord = memoizedRouteInfo.coordinates[0];
+        const endCoord = memoizedRouteInfo.coordinates[memoizedRouteInfo.coordinates.length - 1];
 
         // Create airplane icon
         const airplaneIcon = {
@@ -224,8 +307,8 @@ const GoogleMap = ({
         flightPathRef.current.push(endMarker);
 
         // Waypoint markers
-        for (let i = 1; i < routeInfo.coordinates.length - 1; i++) {
-          const waypoint = routeInfo.coordinates[i];
+        for (let i = 1; i < memoizedRouteInfo.coordinates.length - 1; i++) {
+          const waypoint = memoizedRouteInfo.coordinates[i];
           const waypointMarker = new window.google.maps.Marker({
             position: { lat: waypoint.lat, lng: waypoint.lng },
             map: mapInstanceRef.current,
@@ -236,17 +319,17 @@ const GoogleMap = ({
         }
 
         // Fit bounds to show entire flight route
-        if (routeInfo.bounds) {
-          console.log('Setting bounds for flight route:', routeInfo.bounds);
+        if (memoizedRouteInfo.bounds) {
+          console.log('Setting bounds for flight route:', memoizedRouteInfo.bounds);
           const bounds = new window.google.maps.LatLngBounds();
-          bounds.extend({ lat: routeInfo.bounds.south, lng: routeInfo.bounds.west });
-          bounds.extend({ lat: routeInfo.bounds.north, lng: routeInfo.bounds.east });
+          bounds.extend({ lat: memoizedRouteInfo.bounds.south, lng: memoizedRouteInfo.bounds.west });
+          bounds.extend({ lat: memoizedRouteInfo.bounds.north, lng: memoizedRouteInfo.bounds.east });
           mapInstanceRef.current.fitBounds(bounds);
         } else if (route.routes?.[0]?.bounds) {
           mapInstanceRef.current.fitBounds(route.routes[0].bounds);
         }
 
-        console.log('✅ Flight route rendered successfully with', routeInfo.coordinates.length, 'points');
+        console.log('✅ Flight route rendered successfully with', memoizedRouteInfo.coordinates.length, 'points');
 
       } else {
         // Fallback: try to extract from route legs (old method)
@@ -258,10 +341,10 @@ const GoogleMap = ({
       console.error('❌ Flight route rendering failed:', err);
       setError(`Flight route rendering failed: ${err.message}`);
     }
-  };
+  }, [memoizedRouteInfo, route, clearFlightPaths]);
 
   // Fallback method for rendering flight routes (in case coordinates are not in routeInfo)
-  const renderFlightRouteFallback = () => {
+  const renderFlightRouteFallback = useCallback(() => {
     try {
       console.log('📦 Using fallback flight rendering method');
       
@@ -341,17 +424,18 @@ const GoogleMap = ({
     } catch (err) {
       console.error('❌ Fallback flight rendering failed:', err);
     }
-  };
+  }, [route]);
 
-  const clearFlightPaths = () => {
-    console.log('🧹 Clearing existing flight paths, count:', flightPathRef.current.length);
-    flightPathRef.current.forEach(item => {
-      if (item && item.setMap) {
-        item.setMap(null);
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      clearFlightPaths();
+      clearMarkers();
+      if (directionsRendererRef.current) {
+        directionsRendererRef.current.setMap(null);
       }
-    });
-    flightPathRef.current = [];
-  };
+    };
+  }, [clearFlightPaths, clearMarkers]);
 
   if (error) {
     return (
@@ -362,6 +446,10 @@ const GoogleMap = ({
           <button
             onClick={() => {
               setError(null);
+              setApiLoaded(false);
+              setIsLoaded(false);
+              // Reset the Google Maps service
+              googleMapsService.reset();
               window.location.reload();
             }}
             className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm"
@@ -390,7 +478,7 @@ const GoogleMap = ({
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
             <p className="text-gray-600">
-              {!apiLoaded ? 'Loading Google Maps...' : 'Initializing map...'}
+              {!apiLoaded ? 'Loading Google Maps API...' : 'Initializing map...'}
             </p>
           </div>
         </div>
@@ -400,7 +488,7 @@ const GoogleMap = ({
       {route && isLoaded && (
         <div className="absolute top-2 left-2 bg-white rounded-lg shadow-lg px-3 py-2 text-sm z-10">
           <div className="flex items-center gap-2">
-            {routeInfo?.isFlightRoute ? (
+            {memoizedRouteInfo?.isFlightRoute ? (
               <>
                 <div className="w-3 h-3 bg-orange-500 rounded-full animate-pulse"></div>
                 <span className="text-gray-700 font-medium">✈️ Flight Route</span>
@@ -416,13 +504,13 @@ const GoogleMap = ({
       )}
 
       {/* Debug info for flight routes */}
-      {route && routeInfo?.isFlightRoute && isLoaded && (
+      {route && memoizedRouteInfo?.isFlightRoute && isLoaded && (
         <div className="absolute bottom-2 left-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 text-xs z-10 max-w-xs">
           <div className="text-orange-800">
             <div className="font-medium">Flight Route Debug:</div>
-            <div>Coordinates: {routeInfo.coordinates?.length || 0}</div>
+            <div>Coordinates: {memoizedRouteInfo.coordinates?.length || 0}</div>
             <div>Paths rendered: {flightPathRef.current.length}</div>
-            <div>Has bounds: {routeInfo.bounds ? 'Yes' : 'No'}</div>
+            <div>Has bounds: {memoizedRouteInfo.bounds ? 'Yes' : 'No'}</div>
           </div>
         </div>
       )}

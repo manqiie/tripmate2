@@ -1,22 +1,34 @@
-// src/services/googleMaps.js - Enhanced with flight routes
+// src/services/googleMaps.js - FIXED VERSION - Prevents multiple API loads
 class GoogleMapsService {
   constructor() {
     this.isLoaded = false;
     this.loadPromise = null;
     this.apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+    this.loadingStarted = false; // NEW: Track if loading has started
     
     console.log('Google Maps Service initialized');
     console.log('API Key present:', !!this.apiKey);
   }
 
-  // Load Google Maps API
+  // Load Google Maps API - FIXED to prevent multiple loads
   loadGoogleMaps() {
-    if (this.isLoaded) {
+    // If already loaded, return immediately
+    if (this.isLoaded && window.google?.maps) {
+      console.log('✅ Google Maps already loaded, returning existing instance');
       return Promise.resolve();
     }
 
+    // If loading is in progress, return the existing promise
     if (this.loadPromise) {
+      console.log('⏳ Google Maps loading in progress, waiting for existing promise');
       return this.loadPromise;
+    }
+
+    // If loading has started but promise is somehow lost, check if it's actually loaded
+    if (this.loadingStarted && window.google?.maps) {
+      console.log('✅ Google Maps was loaded externally, marking as ready');
+      this.isLoaded = true;
+      return Promise.resolve();
     }
 
     if (!this.apiKey) {
@@ -25,13 +37,41 @@ class GoogleMapsService {
       return Promise.reject(new Error(error));
     }
 
+    console.log('🚀 Starting Google Maps API load...');
+    this.loadingStarted = true;
+
+    // Create and store the loading promise
     this.loadPromise = new Promise((resolve, reject) => {
-      if (window.google && window.google.maps) {
-        this.isLoaded = true;
-        resolve();
-        return;
+      // Check if script already exists (prevents duplicate scripts)
+      const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
+      if (existingScript) {
+        console.log('📋 Google Maps script already exists in DOM');
+        
+        // Wait for it to load if it hasn't yet
+        if (window.google?.maps) {
+          console.log('✅ Google Maps already available');
+          this.isLoaded = true;
+          resolve();
+          return;
+        } else {
+          console.log('⏳ Waiting for existing script to load...');
+          existingScript.onload = () => {
+            if (window.google?.maps) {
+              console.log('✅ Existing script loaded successfully');
+              this.isLoaded = true;
+              resolve();
+            } else {
+              reject(new Error('Google Maps script loaded but API not available'));
+            }
+          };
+          existingScript.onerror = () => {
+            reject(new Error('Existing Google Maps script failed to load'));
+          };
+          return;
+        }
       }
 
+      // Create new script
       const script = document.createElement('script');
       const libraries = ['places', 'geometry'].join(',');
       script.src = `https://maps.googleapis.com/maps/api/js?key=${this.apiKey}&libraries=${libraries}&v=weekly`;
@@ -39,24 +79,62 @@ class GoogleMapsService {
       script.defer = true;
       
       script.onload = () => {
-        if (window.google && window.google.maps) {
+        console.log('📜 Google Maps script loaded');
+        if (window.google?.maps) {
+          console.log('✅ Google Maps API available and ready');
           this.isLoaded = true;
+          this.loadingStarted = false;
           resolve();
         } else {
+          console.error('❌ Google Maps script loaded but API not accessible');
+          this.loadingStarted = false;
           reject(new Error('Google Maps API loaded but not accessible'));
         }
       };
       
       script.onerror = (error) => {
+        console.error('❌ Failed to load Google Maps script:', error);
+        this.loadingStarted = false;
+        this.loadPromise = null; // Reset so it can be retried
         reject(new Error('Failed to load Google Maps API. Check your API key and internet connection.'));
       };
 
+      console.log('📜 Adding Google Maps script to DOM...');
       document.head.appendChild(script);
     });
 
     return this.loadPromise;
   }
 
+  // Reset the service (useful for testing or error recovery)
+  reset() {
+    console.log('🔄 Resetting Google Maps Service');
+    this.isLoaded = false;
+    this.loadPromise = null;
+    this.loadingStarted = false;
+    
+    // Remove existing scripts if needed
+    const scripts = document.querySelectorAll('script[src*="maps.googleapis.com"]');
+    scripts.forEach(script => {
+      console.log('🗑️ Removing existing Google Maps script');
+      script.remove();
+    });
+  }
+
+  // Check current status
+  getStatus() {
+    return {
+      isLoaded: this.isLoaded,
+      hasPromise: !!this.loadPromise,
+      loadingStarted: this.loadingStarted,
+      windowGoogleExists: !!window.google,
+      windowGoogleMapsExists: !!window.google?.maps,
+      hasApiKey: !!this.apiKey
+    };
+  }
+
+  // Rest of your methods remain the same...
+  
   // Check if two locations are in different continents/countries that require flights
   async checkIfFlightRequired(startLocation, endLocation) {
     try {
