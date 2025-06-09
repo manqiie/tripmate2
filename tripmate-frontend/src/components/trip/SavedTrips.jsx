@@ -1,10 +1,11 @@
-// src/components/trip/SavedTrips.jsx - Updated with Link navigation
+// src/components/trip/SavedTrips.jsx - Updated with navigate for edit button
 import React, { useState, useEffect } from 'react';
 import { Search, MapPin, Calendar, Users, Edit, Trash2, Eye, Route, Clock } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 
 const SavedTrips = () => {
+  const navigate = useNavigate();
   const [trips, setTrips] = useState([]);
   const [filteredTrips, setFilteredTrips] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -193,7 +194,7 @@ const SavedTrips = () => {
                       <Eye className="w-4 h-4" />
                     </Link>
                     <button
-                      onClick={() => window.location.href = `/trip/${trip.id}/edit`}
+                      onClick={() => navigate(`/trip/${trip.id}/edit`)}
                       className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                       title="Edit Trip"
                     >
