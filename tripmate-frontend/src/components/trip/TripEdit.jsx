@@ -82,9 +82,45 @@ const TripEdit = () => {
     });
   };
 
-  const removeWaypoint = (index) => {
-    const newWaypoints = tripData.waypoints.filter((_, i) => i !== index);
-    setTripData({ ...tripData, waypoints: newWaypoints });
+  const removeWaypoint = async (index) => {
+    // Check if this waypoint has any media uploaded
+    const stopIndex = index + 1; // +1 because waypoints start after the start location
+    
+    try {
+      const response = await api.get(`/trips/${id}/media/?stop_index=${stopIndex}`);
+      const mediaCount = response.data.length;
+      
+      if (mediaCount > 0) {
+        const confirmed = window.confirm(
+          `This stop has ${mediaCount} uploaded photo/video/audio file(s). ` +
+          `Removing this stop will also delete all associated media. ` +
+          `Are you sure you want to continue?`
+        );
+        
+        if (!confirmed) {
+          return; // User cancelled, don't remove waypoint
+        }
+        
+        // Delete all media for this stop
+        for (const media of response.data) {
+          await api.delete(`/trips/${id}/media/${media.id}/`);
+        }
+      }
+      
+      // Remove the waypoint
+      const newWaypoints = tripData.waypoints.filter((_, i) => i !== index);
+      setTripData({ ...tripData, waypoints: newWaypoints });
+      
+      if (mediaCount > 0) {
+        alert(`Waypoint removed and ${mediaCount} media file(s) deleted.`);
+      }
+      
+    } catch (error) {
+      console.error('Error checking/removing waypoint media:', error);
+      // Still allow waypoint removal even if media check fails
+      const newWaypoints = tripData.waypoints.filter((_, i) => i !== index);
+      setTripData({ ...tripData, waypoints: newWaypoints });
+    }
   };
 
   const updateWaypoint = (index, value) => {
@@ -147,8 +183,8 @@ const TripEdit = () => {
         // Include route data if recalculated
         ...(routeResult?.route && {
           route_data: JSON.stringify(routeResult.route),
-          total_distance: routeResult?.totalDistance || originalTrip.total_distance,
-          total_duration: routeResult?.totalDuration || originalTrip.total_duration
+          total_distance: routeResult?.totalDistance || 0,
+          total_duration: routeResult?.totalDuration || 0
         })
       };
 
@@ -236,34 +272,44 @@ const TripEdit = () => {
               />
             </div>
 
-            {/* Start Location - Fixed */}
+            {/* Start Location - Editable with warning */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 <MapPin className="w-4 h-4 inline mr-1" />
-                Start Location (Fixed)
+                Start Location
               </label>
               <input
                 type="text"
                 value={tripData.startLocation}
-                disabled
-                className="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg cursor-not-allowed text-gray-600"
+                onChange={(e) => setTripData({ ...tripData, startLocation: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Enter starting location"
               />
-              <p className="text-xs text-gray-500 mt-1">Start location cannot be changed</p>
+              {tripData.startLocation !== originalTrip?.start_location && (
+                <p className="text-xs text-blue-600 mt-1">
+                  💡 Start location changed - consider recalculating route for accurate directions
+                </p>
+              )}
             </div>
 
-            {/* End Location - Fixed */}
+            {/* End Location - Editable with warning */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 <MapPin className="w-4 h-4 inline mr-1" />
-                End Location (Fixed)
+                End Location
               </label>
               <input
                 type="text"
                 value={tripData.endLocation}
-                disabled
-                className="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg cursor-not-allowed text-gray-600"
+                onChange={(e) => setTripData({ ...tripData, endLocation: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Enter destination"
               />
-              <p className="text-xs text-gray-500 mt-1">End location cannot be changed</p>
+              {tripData.endLocation !== originalTrip?.end_location && (
+                <p className="text-xs text-blue-600 mt-1">
+                  💡 End location changed - consider recalculating route for accurate directions
+                </p>
+              )}
             </div>
 
             {/* Waypoints - Editable */}
@@ -281,6 +327,19 @@ const TripEdit = () => {
                   Add Stop
                 </button>
               </div>
+              
+              {/* Waypoint warning */}
+              {tripData.waypoints.length > 0 && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
+                  <div className="flex items-start gap-2">
+                    <div className="text-yellow-600">⚠️</div>
+                    <div className="text-sm text-yellow-700">
+                      <strong>Note:</strong> Removing a waypoint will also delete all photos, videos, and audio files uploaded for that stop.
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               {tripData.waypoints.map((waypoint, index) => (
                 <div key={index} className="flex gap-2 mb-2">
                   <input
@@ -293,14 +352,15 @@ const TripEdit = () => {
                   <button
                     type="button"
                     onClick={() => removeWaypoint(index)}
-                    className="p-2 text-red-600 hover:text-red-700"
+                    className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Remove this stop (will delete associated media)"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
               ))}
               <p className="text-xs text-gray-500 mt-1">
-                Add stops between your start and end locations
+                Add stops between your start and end locations. Your photos and memories will be preserved when changing locations.
               </p>
             </div>
           </div>
