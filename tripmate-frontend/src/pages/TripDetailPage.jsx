@@ -1,9 +1,9 @@
 // src/pages/TripDetailPage.jsx
 import React from 'react';
-import TripDetail from '../components/trip/TripDetail';
+import TripDetailSimplified from '../components/trip/TripDetailSimplified';
 
 const TripDetailPage = () => {
-  return <TripDetail />;
+  return <TripDetailSimplified />;
 };
 
 export default TripDetailPage;
