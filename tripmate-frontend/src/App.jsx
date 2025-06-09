@@ -7,6 +7,7 @@ import HomePage from './pages/HomePage';
 import AuthPage from './pages/AuthPage';
 import ProfilePage from './pages/ProfilePage';
 import SavedTripsPage from './pages/SavedTripsPage';
+import TripDetailPage from './pages/TripDetailPage';
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/saved-trips" element={<SavedTripsPage />} />
+            <Route path="/trip/:id" element={<TripDetailPage />} />
           </Routes>
         </Layout>
       </AuthProvider>

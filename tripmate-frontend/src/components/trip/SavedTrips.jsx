@@ -1,7 +1,7 @@
-// src/components/trip/SavedTrips.jsx
+// src/components/trip/SavedTrips.jsx - Updated with Link navigation
 import React, { useState, useEffect } from 'react';
 import { Search, MapPin, Calendar, Users, Edit, Trash2, Eye, Route, Clock } from 'lucide-react';
-// import { Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import api from '../../services/api';
 
 const SavedTrips = () => {
@@ -185,13 +185,13 @@ const SavedTrips = () => {
                     {trip.title}
                   </h3>
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => window.location.href = `/trip/${trip.id}`}
+                    <Link
+                      to={`/trip/${trip.id}`}
                       className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                       title="View Trip"
                     >
                       <Eye className="w-4 h-4" />
-                    </button>
+                    </Link>
                     <button
                       onClick={() => window.location.href = `/trip/${trip.id}/edit`}
                       className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
