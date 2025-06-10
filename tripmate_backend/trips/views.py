@@ -1,4 +1,4 @@
-# trips/views.py - COMPLETE FILE with media views
+# trips/views.py - Updated with timeline endpoint
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -7,7 +7,7 @@ from django.core.files.storage import default_storage
 from .models import Trip, TripMedia
 from .serializers import (
     TripSerializer, TripCreateSerializer, TripListSerializer,
-    TripMediaSerializer, TripMediaCreateSerializer
+    TripMediaSerializer, TripMediaCreateSerializer, TripTimelineSerializer
 )
 
 class TripListCreateView(generics.ListCreateAPIView):
@@ -36,7 +36,7 @@ class TripListCreateView(generics.ListCreateAPIView):
 
 class TripDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = TripSerializer  # Full serializer for detail view
+    serializer_class = TripSerializer
     
     def get_queryset(self):
         return Trip.objects.filter(user=self.request.user)
@@ -44,9 +44,8 @@ class TripDetailView(generics.RetrieveUpdateDestroyAPIView):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def trip_stats(request):
-    """Get user's trip statistics - ULTRA LIGHTWEIGHT"""
+    """Get user's trip statistics"""
     try:
-        # Use raw SQL aggregation to minimize memory usage
         from django.db import connection
         
         with connection.cursor() as cursor:
@@ -96,6 +95,18 @@ def trip_stats(request):
             'total_duration': 0,
             'recent_trips': []
         })
+
+# NEW: Timeline endpoint
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def trip_timeline(request, trip_id):
+    """Get trip timeline data for automated slideshow"""
+    try:
+        trip = Trip.objects.get(id=trip_id, user=request.user)
+        serializer = TripTimelineSerializer(trip, context={'request': request})
+        return Response(serializer.data)
+    except Trip.DoesNotExist:
+        return Response({'error': 'Trip not found'}, status=404)
 
 # Media views
 @api_view(['GET', 'POST'])

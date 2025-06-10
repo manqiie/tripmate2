@@ -1,4 +1,4 @@
-// src/components/trip/TripDetailSimplified.jsx - COMPLETE FILE with TripMemories
+// src/components/trip/TripDetailClean.jsx - Back to clean, focused version
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, MapPin, Calendar, Users, Clock, Route, ChevronDown, ChevronUp, Star, Search } from 'lucide-react';
@@ -97,24 +97,18 @@ const TripDetailSimplified = () => {
         tripData.end_location
       ];
 
-      console.log('🗺️ Geocoding locations:', locations);
-
       const coordinates = [];
       for (const [index, location] of locations.entries()) {
         try {
-          console.log(`🔍 Geocoding ${index + 1}/${locations.length}: ${location}`);
           const coords = await googleMapsService.geocodeAddress(location);
-          console.log(`✅ Geocoded ${location}:`, coords);
           coordinates.push(coords);
         } catch (error) {
-          console.warn(`❌ Failed to geocode ${location}:`, error);
+          console.warn(`Failed to geocode ${location}:`, error);
           const fallbackCoords = getFallbackCoordinates(location);
-          console.log(`🔄 Using fallback coordinates for ${location}:`, fallbackCoords);
           coordinates.push(fallbackCoords);
         }
       }
 
-      console.log('🗺️ Final coordinates array:', coordinates);
       setStopCoordinates(coordinates);
 
       const routeInfo = {
@@ -139,38 +133,19 @@ const TripDetailSimplified = () => {
       'malaysia': { lat: 3.1390, lng: 101.6869, formatted_address: 'Kuala Lumpur, Malaysia' },
       'kuala lumpur': { lat: 3.1390, lng: 101.6869, formatted_address: 'Kuala Lumpur, Malaysia' },
       'taiwan': { lat: 25.0330, lng: 121.5654, formatted_address: 'Taipei, Taiwan' },
-      'taipei': { lat: 25.0330, lng: 121.5654, formatted_address: 'Taipei, Taiwan' },
       'japan': { lat: 35.6762, lng: 139.6503, formatted_address: 'Tokyo, Japan' },
-      'tokyo': { lat: 35.6762, lng: 139.6503, formatted_address: 'Tokyo, Japan' },
-      'osaka': { lat: 34.6937, lng: 135.5023, formatted_address: 'Osaka, Japan' },
-      'kyoto': { lat: 35.0116, lng: 135.7681, formatted_address: 'Kyoto, Japan' },
       'hong kong': { lat: 22.3193, lng: 114.1694, formatted_address: 'Hong Kong' },
       'thailand': { lat: 13.7563, lng: 100.5018, formatted_address: 'Bangkok, Thailand' },
-      'bangkok': { lat: 13.7563, lng: 100.5018, formatted_address: 'Bangkok, Thailand' },
-      'philippines': { lat: 14.5995, lng: 120.9842, formatted_address: 'Manila, Philippines' },
-      'manila': { lat: 14.5995, lng: 120.9842, formatted_address: 'Manila, Philippines' },
-      'indonesia': { lat: -6.2088, lng: 106.8456, formatted_address: 'Jakarta, Indonesia' },
-      'jakarta': { lat: -6.2088, lng: 106.8456, formatted_address: 'Jakarta, Indonesia' },
-      'vietnam': { lat: 21.0285, lng: 105.8542, formatted_address: 'Hanoi, Vietnam' },
-      'hanoi': { lat: 21.0285, lng: 105.8542, formatted_address: 'Hanoi, Vietnam' },
-      'ho chi minh': { lat: 10.8231, lng: 106.6297, formatted_address: 'Ho Chi Minh City, Vietnam' }
     };
 
     const key = location.toLowerCase().trim();
     
-    // Direct match
-    if (fallbacks[key]) {
-      return fallbacks[key];
-    }
-    
-    // Partial match
     for (const [fallbackKey, coords] of Object.entries(fallbacks)) {
       if (key.includes(fallbackKey) || fallbackKey.includes(key)) {
         return coords;
       }
     }
     
-    // Default fallback (Singapore)
     return {
       lat: 1.3521,
       lng: 103.8198,
@@ -622,7 +597,7 @@ const TripDetailSimplified = () => {
         </div>
       </div>
 
-      {/* Trip Memories Component - positioned above Trip Summary */}
+      {/* Trip Memories Component - Now includes Timeline button */}
       <TripMemories 
         tripId={trip.id} 
         stops={stops} 
