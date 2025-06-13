@@ -1,6 +1,6 @@
-// src/components/layout/Navbar.jsx
+// src/components/layout/Navbar.jsx - Updated with Place Q&A link
 import React from 'react';
-import { MapPin, User, LogOut, Bookmark } from 'lucide-react';
+import { MapPin, User, LogOut, Bookmark, MessageCircle } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -23,6 +23,15 @@ const Navbar = () => {
           </Link>
 
           <div className="flex items-center gap-4">
+            {/* Place Q&A Link - Available to all users */}
+            <Link 
+              to="/place-qna" 
+              className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-blue-600 transition-colors"
+            >
+              <MessageCircle className="w-5 h-5" />
+              <span>Place Q&A</span>
+            </Link>
+
             {user ? (
               <>
                 <Link 
