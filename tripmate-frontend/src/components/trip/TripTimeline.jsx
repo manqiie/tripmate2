@@ -1,9 +1,9 @@
-// src/components/trip/TripTimeline.jsx - Automated slideshow/timeline view
+// src/components/trip/TripTimeline.jsx - Fixed image display for slideshow
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Play, Pause, SkipBack, SkipForward, Calendar, MapPin, 
   Volume2, VolumeX, Camera, Video, Mic, FileText, 
-  Maximize, Minimize, RotateCcw, Download, Share2
+  Maximize, Minimize, RotateCcw, Download, Share2, ZoomIn, ZoomOut
 } from 'lucide-react';
 import GoogleMap from '../maps/GoogleMap';
 import api from '../../services/api';
@@ -22,14 +22,22 @@ const TripTimeline = ({ tripId, onClose }) => {
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   
+  // New image display states
+  const [imageZoom, setImageZoom] = useState(1);
+  const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  
   // Media refs
   const audioRef = useRef(null);
   const videoRef = useRef(null);
   const intervalRef = useRef(null);
   const containerRef = useRef(null);
+  const imageRef = useRef(null);
 
   useEffect(() => {
     fetchTimelineData();
+    
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -55,6 +63,12 @@ const TripTimeline = ({ tripId, onClose }) => {
       }
     };
   }, [isPlaying, currentItemIndex, currentDayIndex, slideDuration]);
+
+  // Reset image state when item changes
+  useEffect(() => {
+    setImageZoom(1);
+    setImagePosition({ x: 0, y: 0 });
+  }, [currentItemIndex, currentDayIndex]);
 
   const fetchTimelineData = async () => {
     try {
@@ -143,6 +157,49 @@ const TripTimeline = ({ tripId, onClose }) => {
     }
   };
 
+  // Image manipulation functions
+  const handleImageMouseDown = (e) => {
+    if (imageZoom > 1) {
+      setIsDragging(true);
+      setDragStart({
+        x: e.clientX - imagePosition.x,
+        y: e.clientY - imagePosition.y
+      });
+    }
+  };
+
+  const handleImageMouseMove = (e) => {
+    if (isDragging && imageZoom > 1) {
+      setImagePosition({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      });
+    }
+  };
+
+  const handleImageMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const resetImageView = () => {
+    setImageZoom(1);
+    setImagePosition({ x: 0, y: 0 });
+  };
+
+  const zoomIn = () => {
+    setImageZoom(prev => Math.min(prev + 0.5, 5));
+  };
+
+  const zoomOut = () => {
+    setImageZoom(prev => {
+      const newZoom = Math.max(prev - 0.5, 1);
+      if (newZoom === 1) {
+        setImagePosition({ x: 0, y: 0 });
+      }
+      return newZoom;
+    });
+  };
+
   const exportTimeline = () => {
     // Create a data export of the timeline
     const exportData = {
@@ -175,30 +232,101 @@ const TripTimeline = ({ tripId, onClose }) => {
     URL.revokeObjectURL(url);
   };
 
+  const getImageContainerStyle = () => {
+    const baseStyle = {
+      width: '100%',
+      height: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+      cursor: imageZoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
+      position: 'relative'
+    };
+
+    return baseStyle;
+  };
+
+  const getImageStyle = (item) => {
+    const baseStyle = {
+      transition: isDragging ? 'none' : 'all 0.3s ease',
+      userSelect: 'none',
+      pointerEvents: 'auto',
+      display: 'block',
+      maxWidth: '100%',
+      maxHeight: '100%',
+      width: 'auto',
+      height: 'auto',
+      objectFit: 'contain'
+    };
+
+    if (imageZoom > 1) {
+      return {
+        ...baseStyle,
+        maxWidth: 'none',
+        maxHeight: 'none',
+        transform: `scale(${imageZoom}) translate(${imagePosition.x / imageZoom}px, ${imagePosition.y / imageZoom}px)`,
+        transformOrigin: 'center center'
+      };
+    }
+
+    return baseStyle;
+  };
+
   const renderMediaContent = (item) => {
     if (!item) return null;
 
     switch (item.media_type) {
       case 'photo':
         return (
-          <img
-            src={item.file_url}
-            alt={item.title}
-            className="w-full h-full object-contain"
-          />
+          <div 
+            style={getImageContainerStyle()}
+            onMouseDown={handleImageMouseDown}
+            onMouseMove={handleImageMouseMove}
+            onMouseUp={handleImageMouseUp}
+            onMouseLeave={handleImageMouseUp}
+          >
+            <img
+              ref={imageRef}
+              src={item.file_url}
+              alt={item.title}
+              style={getImageStyle(item)}
+              draggable={false}
+              onLoad={() => {
+                // Image loaded successfully
+                console.log('Image loaded successfully');
+              }}
+            />
+          </div>
         );
       
       case 'video':
         return (
-          <video
-            ref={videoRef}
-            src={item.file_url}
-            className="w-full h-full object-contain"
-            controls={!isPlaying}
-            autoPlay={isPlaying}
-            muted={isMuted}
-            volume={volume}
-          />
+          <div 
+            style={{
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <video
+              ref={videoRef}
+              src={item.file_url}
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                width: 'auto',
+                height: 'auto',
+                objectFit: 'contain'
+              }}
+              controls={!isPlaying}
+              autoPlay={isPlaying}
+              muted={isMuted}
+              volume={volume}
+            />
+          </div>
         );
       
       case 'audio':
@@ -278,6 +406,39 @@ const TripTimeline = ({ tripId, onClose }) => {
         </div>
         
         <div className="flex items-center gap-4">
+          {/* Image Controls (only show for photos) */}
+          {currentItem?.media_type === 'photo' && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={zoomOut}
+                className="p-2 bg-gray-800 rounded hover:bg-gray-700"
+                title="Zoom Out"
+                disabled={imageZoom <= 1}
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+              
+              <button
+                onClick={zoomIn}
+                className="p-2 bg-gray-800 rounded hover:bg-gray-700"
+                title="Zoom In"
+                disabled={imageZoom >= 5}
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+              
+              {imageZoom > 1 && (
+                <button
+                  onClick={resetImageView}
+                  className="p-2 bg-gray-800 rounded hover:bg-gray-700"
+                  title="Reset View"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Speed Control */}
           <select
             value={slideDuration}
@@ -321,60 +482,76 @@ const TripTimeline = ({ tripId, onClose }) => {
       {/* Main Content Area */}
       <div className="flex-1 flex">
         {/* Media Display */}
-        <div className="flex-1 bg-black flex items-center justify-center relative">
-          {currentItem ? (
-            <>
-              {renderMediaContent(currentItem)}
-              
-              {/* Media Info Overlay */}
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/70 to-transparent text-white p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold mb-2">{currentItem.title}</h3>
-                    <div className="flex items-center gap-4 text-sm text-gray-300 mb-2">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-4 h-4" />
-                        {new Date(currentItem.custom_date || currentItem.taken_at).toLocaleDateString()}
-                      </span>
-                      {currentItem.custom_time && (
-                        <span>{currentItem.custom_time}</span>
-                      )}
-                      <span className="flex items-center gap-1">
-                        {currentItem.media_type === 'photo' && <Camera className="w-4 h-4" />}
-                        {currentItem.media_type === 'video' && <Video className="w-4 h-4" />}
-                        {currentItem.media_type === 'audio' && <Mic className="w-4 h-4" />}
-                        {currentItem.media_type}
-                      </span>
-                    </div>
-                    
-                    {currentItem.description && (
-                      <p className="text-gray-200 mb-2">{currentItem.description}</p>
-                    )}
-                    
-                    {currentItem.notes && (
-                      <div className="bg-black/50 rounded p-3 mt-2">
-                        <div className="flex items-center gap-1 mb-1">
-                          <FileText className="w-4 h-4" />
-                          <span className="text-xs uppercase tracking-wide">Travel Notes</span>
-                        </div>
-                        <p className="text-sm text-gray-200">{currentItem.notes}</p>
+        <div className="flex-1 bg-black relative overflow-hidden">
+          {/* Image Container with proper sizing */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            {currentItem ? (
+              <>
+                {renderMediaContent(currentItem)}
+                
+                {/* Media Info Overlay */}
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/70 to-transparent text-white p-6">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h3 className="text-xl font-bold mb-2">{currentItem.title}</h3>
+                      <div className="flex items-center gap-4 text-sm text-gray-300 mb-2">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-4 h-4" />
+                          {new Date(currentItem.custom_date || currentItem.taken_at).toLocaleDateString()}
+                        </span>
+                        {currentItem.custom_time && (
+                          <span>{currentItem.custom_time}</span>
+                        )}
+                        <span className="flex items-center gap-1">
+                          {currentItem.media_type === 'photo' && <Camera className="w-4 h-4" />}
+                          {currentItem.media_type === 'video' && <Video className="w-4 h-4" />}
+                          {currentItem.media_type === 'audio' && <Mic className="w-4 h-4" />}
+                          {currentItem.media_type}
+                        </span>
+                        {/* Display zoom level for photos */}
+                        {currentItem.media_type === 'photo' && imageZoom > 1 && (
+                          <span className="text-blue-300">
+                            Zoom: {imageZoom}x
+                          </span>
+                        )}
                       </div>
-                    )}
-                  </div>
+                      
+                      {currentItem.description && (
+                        <p className="text-gray-200 mb-2">{currentItem.description}</p>
+                      )}
+                      
+                      {currentItem.notes && (
+                        <div className="bg-black/50 rounded p-3 mt-2">
+                          <div className="flex items-center gap-1 mb-1">
+                            <FileText className="w-4 h-4" />
+                            <span className="text-xs uppercase tracking-wide">Travel Notes</span>
+                          </div>
+                          <p className="text-sm text-gray-200">{currentItem.notes}</p>
+                        </div>
+                      )}
+                    </div>
 
-                  {/* Progress Indicator */}
-                  <div className="text-right text-sm text-gray-400">
-                    {currentGlobalIndex + 1} / {totalMediaItems}
+                    {/* Progress Indicator */}
+                    <div className="text-right text-sm text-gray-400">
+                      {currentGlobalIndex + 1} / {totalMediaItems}
+                    </div>
                   </div>
                 </div>
+
+                {/* Image interaction hints */}
+                {currentItem.media_type === 'photo' && imageZoom > 1 && (
+                  <div className="absolute top-4 left-4 bg-black/70 text-white text-sm px-3 py-2 rounded">
+                    💡 Click and drag to pan • Use zoom controls to adjust
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-white text-center">
+                <Camera className="w-24 h-24 mx-auto mb-4 opacity-50" />
+                <p className="text-xl">No media available</p>
               </div>
-            </>
-          ) : (
-            <div className="text-white text-center">
-              <Camera className="w-24 h-24 mx-auto mb-4 opacity-50" />
-              <p className="text-xl">No media available</p>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Timeline Sidebar */}
