@@ -1,7 +1,8 @@
-          // src/components/trip/TripPlanner.jsx - FIXED VERSION
+//src/component/TripPlanner.jsx
 import React, { useState } from 'react';
-import { MapPin, Calendar, Users, Plus, X, Route, Save, Clock } from 'lucide-react';
+import { MapPin, Calendar, Users, Plus, X, Route, Save, Clock, CheckSquare, ChevronDown, ChevronUp } from 'lucide-react';
 import GoogleMap from '../maps/GoogleMap';
+import TripTypeSelector from './TripTypeSelector';
 import googleMapsService from '../../services/googleMaps';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
@@ -15,15 +16,18 @@ const TripPlanner = () => {
     startDate: '',
     endDate: '',
     travelers: 2,
-    waypoints: []
+    waypoints: [],
+    tripType: 'leisure'
   });
   
-  // CHANGE: Store the complete route result, not just the route part
   const [routeResult, setRouteResult] = useState(null);
+  const [previewChecklist, setPreviewChecklist] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [showChecklistPreview, setShowChecklistPreview] = useState(false);
+  const [expandedCategories, setExpandedCategories] = useState({});
 
   const addWaypoint = () => {
     setTripData({
@@ -54,6 +58,53 @@ const TripPlanner = () => {
     return 0;
   };
 
+  // Preview checklist for selected trip type
+  const handlePreviewChecklist = async () => {
+    try {
+      const response = await api.post('/trips/checklist/generate/', {
+        trip_type: tripData.tripType,
+        duration_days: calculateDuration(),
+        travelers: tripData.travelers,
+        international: isInternationalTrip()
+      });
+      
+      setPreviewChecklist(response.data.checklist);
+      setShowChecklistPreview(true);
+      
+      // Expand all categories by default when showing preview
+      const grouped = groupChecklistByCategory(response.data.checklist);
+      const allExpanded = {};
+      Object.keys(grouped).forEach(category => {
+        allExpanded[category] = true;
+      });
+      setExpandedCategories(allExpanded);
+    } catch (error) {
+      console.error('Failed to generate checklist preview:', error);
+    }
+  };
+
+  const toggleCategory = (category) => {
+    setExpandedCategories(prev => ({
+      ...prev,
+      [category]: !prev[category]
+    }));
+  };
+
+  const isInternationalTrip = () => {
+    const locations = [
+      tripData.startLocation,
+      tripData.endLocation,
+      ...tripData.waypoints.filter(wp => wp.trim())
+    ].join(' ').toLowerCase();
+    
+    return locations.includes('singapore') && (
+      locations.includes('malaysia') || 
+      locations.includes('thailand') ||
+      locations.includes('japan') ||
+      locations.includes('korea')
+    );
+  };
+
   const handlePlanTrip = async () => {
     if (!tripData.startLocation || !tripData.endLocation) {
       setError('Please enter both start and end locations');
@@ -66,7 +117,6 @@ const TripPlanner = () => {
     try {
       const validWaypoints = tripData.waypoints.filter(wp => wp.trim() !== '');
       
-      // FIXED: Store the complete result
       const result = await googleMapsService.calculateOptimizedRoute(
         tripData.startLocation,
         tripData.endLocation,
@@ -74,8 +124,6 @@ const TripPlanner = () => {
       );
 
       console.log('Route calculation result:', result);
-      
-      // Store the complete result
       setRouteResult(result);
       
     } catch (err) {
@@ -114,9 +162,11 @@ const TripPlanner = () => {
         end_date: tripData.endDate,
         travelers: tripData.travelers,
         waypoints: tripData.waypoints.filter(wp => wp.trim() !== ''),
+        trip_type: tripData.tripType,
         route_data: JSON.stringify(routeResult.route),
         total_distance: routeResult?.totalDistance || 0,
-        total_duration: routeResult?.totalDuration || 0
+        total_duration: routeResult?.totalDuration || 0,
+        generate_checklist: true
       };
 
       await api.post('/trips/', tripDataToSave);
@@ -127,6 +177,31 @@ const TripPlanner = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const groupChecklistByCategory = (checklist) => {
+    const grouped = {};
+    checklist.forEach(item => {
+      const category = item.category || 'general';
+      if (!grouped[category]) {
+        grouped[category] = [];
+      }
+      grouped[category].push(item);
+    });
+    return grouped;
+  };
+
+  const getChecklistCategories = () => {
+    return {
+      documents: { name: 'Documents & Legal', icon: '📄', color: 'blue' },
+      booking: { name: 'Bookings & Reservations', icon: '🏨', color: 'green' },
+      health: { name: 'Health & Medical', icon: '🏥', color: 'red' },
+      finance: { name: 'Money & Finance', icon: '💳', color: 'yellow' },
+      packing: { name: 'Packing & Gear', icon: '🧳', color: 'orange' },
+      planning: { name: 'Planning & Research', icon: '📋', color: 'indigo' },
+      safety: { name: 'Safety & Emergency', icon: '🚨', color: 'red' },
+      coordination: { name: 'Group Coordination', icon: '👥', color: 'blue' }
+    };
   };
 
   return (
@@ -143,7 +218,7 @@ const TripPlanner = () => {
 
         {saved && (
           <div className="bg-green-50 text-green-600 p-3 rounded-lg mb-4">
-            Trip saved successfully!
+            Trip saved successfully with personalized checklist!
           </div>
         )}
 
@@ -165,6 +240,29 @@ const TripPlanner = () => {
                 />
               </div>
             )}
+
+            {/* Trip Type Selector */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Trip Type
+              </label>
+              <select
+                value={tripData.tripType}
+                onChange={(e) => setTripData({ ...tripData, tripType: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="leisure">Leisure & Vacation</option>
+                <option value="business">Business & Work</option>
+                <option value="adventure">Adventure & Outdoor</option>
+                <option value="family">Family Trip</option>
+                <option value="romantic">Romantic Getaway</option>
+                <option value="educational">Educational & Cultural</option>
+                <option value="medical">Medical & Health</option>
+                <option value="religious">Religious & Pilgrimage</option>
+                <option value="sports">Sports & Events</option>
+                <option value="backpacking">Backpacking & Budget</option>
+              </select>
+            </div>
 
             {/* Start Location */}
             <div>
@@ -287,6 +385,23 @@ const TripPlanner = () => {
               </select>
             </div>
 
+            {/* Checklist Preview Button - Temporarily Disabled */}
+            {/* 
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h4 className="font-semibold text-gray-900 mb-2">Personalized Checklist</h4>
+              <p className="text-sm text-gray-600 mb-3">
+                Get a customized checklist based on your trip type, duration, and travelers.
+              </p>
+              <button
+                onClick={handlePreviewChecklist}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                <CheckSquare className="w-4 h-4" />
+                Preview Checklist
+              </button>
+            </div>
+            */}
+
             {/* Action Buttons */}
             <div className="space-y-3">
               <button
@@ -315,7 +430,7 @@ const TripPlanner = () => {
                   ) : (
                     <>
                       <Save className="w-5 h-5" />
-                      Save Trip
+                      Save Trip with Checklist
                     </>
                   )}
                 </button>
@@ -324,6 +439,93 @@ const TripPlanner = () => {
           </div>
         </div>
       </div>
+
+      {/* Checklist Preview Section - Temporarily Disabled */}
+      {/* 
+      {showChecklistPreview && previewChecklist && (
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="text-2xl font-bold text-gray-900">Checklist Preview</h3>
+              <p className="text-gray-600">
+                Personalized for {tripData.tripType} trip • {previewChecklist.length} items
+              </p>
+            </div>
+            <button
+              onClick={() => setShowChecklistPreview(false)}
+              className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          
+          <div className="space-y-4">
+            {Object.entries(groupChecklistByCategory(previewChecklist)).map(([category, items]) => {
+              const categoryInfo = getChecklistCategories()[category] || {
+                name: category,
+                icon: '📋',
+                color: 'gray'
+              };
+              
+              const isExpanded = expandedCategories[category];
+              
+              return (
+                <div key={category} className="border border-gray-200 rounded-lg">
+                  <button
+                    onClick={() => toggleCategory(category)}
+                    className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">{categoryInfo.icon}</span>
+                      <div className="text-left">
+                        <h4 className="font-semibold text-gray-900">{categoryInfo.name}</h4>
+                        <p className="text-sm text-gray-500">{items.length} items</p>
+                      </div>
+                    </div>
+                    {isExpanded ? (
+                      <ChevronUp className="w-5 h-5 text-gray-400" />
+                    ) : (
+                      <ChevronDown className="w-5 h-5 text-gray-400" />
+                    )}
+                  </button>
+                  
+                  {isExpanded && (
+                    <div className="border-t border-gray-200 p-4 bg-gray-50">
+                      <div className="space-y-2">
+                        {items.map((item, index) => (
+                          <div key={index} className="flex items-start gap-3 p-2 bg-white rounded border">
+                            <div className="w-4 h-4 border border-gray-300 rounded mt-0.5 flex-shrink-0"></div>
+                            <div className="flex-1">
+                              <span className="text-sm text-gray-900">{item.text}</span>
+                              {item.priority && (
+                                <span className={`ml-2 px-2 py-0.5 text-xs rounded-full ${
+                                  item.priority === 'high' ? 'bg-red-100 text-red-700' :
+                                  item.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                                  'bg-gray-100 text-gray-700'
+                                }`}>
+                                  {item.priority}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          
+          <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+            <p className="text-sm text-blue-700">
+              💡 This checklist will be automatically created when you save your trip. 
+              You can customize it later by adding, removing, or modifying items.
+            </p>
+          </div>
+        </div>
+      )}
+      
 
       {/* Route Information */}
       {routeResult && (
@@ -391,7 +593,7 @@ const TripPlanner = () => {
         <h3 className="text-xl font-bold text-gray-900 mb-4">Route Map</h3>
         <GoogleMap
           route={routeResult?.route}
-          routeInfo={routeResult} // Pass the complete route info including flight status
+          routeInfo={routeResult}
           className="w-full h-96 rounded-lg"
         />
       </div>

@@ -1,4 +1,4 @@
-// src/components/trip/TripEdit.jsx
+//src/components/TripEdit.jsx
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, MapPin, Calendar, Users, Plus, X, Route, Save, Clock } from 'lucide-react';
@@ -7,7 +7,7 @@ import googleMapsService from '../../services/googleMaps';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
 
-const TripEdit = () => {
+const TripEditWithChecklist = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -20,7 +20,8 @@ const TripEdit = () => {
     startDate: '',
     endDate: '',
     travelers: 2,
-    waypoints: []
+    waypoints: [],
+    tripType: 'leisure'
   });
   
   const [routeResult, setRouteResult] = useState(null);
@@ -50,10 +51,10 @@ const TripEdit = () => {
         startDate: trip.start_date,
         endDate: trip.end_date,
         travelers: trip.travelers,
-        waypoints: trip.waypoints || []
+        waypoints: trip.waypoints || [],
+        tripType: trip.trip_type || 'leisure'
       });
 
-      // If trip has route data, set it for display
       if (trip.route_data) {
         try {
           const parsedRoute = JSON.parse(trip.route_data);
@@ -83,8 +84,7 @@ const TripEdit = () => {
   };
 
   const removeWaypoint = async (index) => {
-    // Check if this waypoint has any media uploaded
-    const stopIndex = index + 1; // +1 because waypoints start after the start location
+    const stopIndex = index + 1;
     
     try {
       const response = await api.get(`/trips/${id}/media/?stop_index=${stopIndex}`);
@@ -98,16 +98,14 @@ const TripEdit = () => {
         );
         
         if (!confirmed) {
-          return; // User cancelled, don't remove waypoint
+          return;
         }
         
-        // Delete all media for this stop
         for (const media of response.data) {
           await api.delete(`/trips/${id}/media/${media.id}/`);
         }
       }
       
-      // Remove the waypoint
       const newWaypoints = tripData.waypoints.filter((_, i) => i !== index);
       setTripData({ ...tripData, waypoints: newWaypoints });
       
@@ -117,7 +115,6 @@ const TripEdit = () => {
       
     } catch (error) {
       console.error('Error checking/removing waypoint media:', error);
-      // Still allow waypoint removal even if media check fails
       const newWaypoints = tripData.waypoints.filter((_, i) => i !== index);
       setTripData({ ...tripData, waypoints: newWaypoints });
     }
@@ -162,6 +159,19 @@ const TripEdit = () => {
     }
   };
 
+  const handleUpdateChecklist = async () => {
+    try {
+      await api.post(`/trips/${id}/checklist/regenerate/`, {
+        merge_with_existing: true
+      });
+      
+      return true; // Success
+    } catch (error) {
+      console.error('Failed to update checklist:', error);
+      return false; // Failure
+    }
+  };
+
   const handleSaveTrip = async () => {
     if (!tripData.title.trim()) {
       setError('Please enter a trip title');
@@ -180,7 +190,7 @@ const TripEdit = () => {
         end_date: tripData.endDate,
         travelers: tripData.travelers,
         waypoints: tripData.waypoints.filter(wp => wp.trim() !== ''),
-        // Include route data if recalculated
+        trip_type: tripData.tripType,
         ...(routeResult?.route && {
           route_data: JSON.stringify(routeResult.route),
           total_distance: routeResult?.totalDistance || 0,
@@ -190,7 +200,27 @@ const TripEdit = () => {
 
       await api.patch(`/trips/${id}/`, tripDataToSave);
       
-      // Redirect to trip detail page
+      // Check if trip details changed and automatically update checklist
+      const hasChanges = (
+        tripData.tripType !== originalTrip?.trip_type ||
+        tripData.travelers !== originalTrip?.travelers ||
+        calculateDuration() !== originalTrip?.duration_days ||
+        tripData.startLocation !== originalTrip?.start_location ||
+        tripData.endLocation !== originalTrip?.end_location ||
+        JSON.stringify(tripData.waypoints) !== JSON.stringify(originalTrip?.waypoints)
+      );
+      
+      if (hasChanges) {
+        const checklistUpdated = await handleUpdateChecklist();
+        if (checklistUpdated) {
+          alert('Trip updated successfully! Your checklist has been automatically updated to match your changes.');
+        } else {
+          alert('Trip updated successfully! Note: Checklist update failed, but your trip changes were saved.');
+        }
+      } else {
+        alert('Trip updated successfully!');
+      }
+      
       navigate(`/trip/${id}`);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to save trip');
@@ -242,7 +272,7 @@ const TripEdit = () => {
         </div>
 
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Edit Trip</h1>
-        <p className="text-gray-600">Update your trip details and add new waypoints</p>
+        <p className="text-gray-600">Update your trip details and personalized checklist</p>
       </div>
 
       {/* Edit Form */}
@@ -272,7 +302,30 @@ const TripEdit = () => {
               />
             </div>
 
-            {/* Start Location - Editable with warning */}
+            {/* Trip Type Selector */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Trip Type
+              </label>
+              <select
+                value={tripData.tripType}
+                onChange={(e) => setTripData({ ...tripData, tripType: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="leisure">Leisure & Vacation</option>
+                <option value="business">Business & Work</option>
+                <option value="adventure">Adventure & Outdoor</option>
+                <option value="family">Family Trip</option>
+                <option value="romantic">Romantic Getaway</option>
+                <option value="educational">Educational & Cultural</option>
+                <option value="medical">Medical & Health</option>
+                <option value="religious">Religious & Pilgrimage</option>
+                <option value="sports">Sports & Events</option>
+                <option value="backpacking">Backpacking & Budget</option>
+              </select>
+            </div>
+
+            {/* Start Location */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 <MapPin className="w-4 h-4 inline mr-1" />
@@ -285,14 +338,9 @@ const TripEdit = () => {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Enter starting location"
               />
-              {tripData.startLocation !== originalTrip?.start_location && (
-                <p className="text-xs text-blue-600 mt-1">
-                  💡 Start location changed - consider recalculating route for accurate directions
-                </p>
-              )}
             </div>
 
-            {/* End Location - Editable with warning */}
+            {/* End Location */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 <MapPin className="w-4 h-4 inline mr-1" />
@@ -305,14 +353,9 @@ const TripEdit = () => {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Enter destination"
               />
-              {tripData.endLocation !== originalTrip?.end_location && (
-                <p className="text-xs text-blue-600 mt-1">
-                  💡 End location changed - consider recalculating route for accurate directions
-                </p>
-              )}
             </div>
 
-            {/* Waypoints - Editable */}
+            {/* Waypoints */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-medium text-gray-700">
@@ -328,7 +371,6 @@ const TripEdit = () => {
                 </button>
               </div>
               
-              {/* Waypoint warning */}
               {tripData.waypoints.length > 0 && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
                   <div className="flex items-start gap-2">
@@ -496,7 +538,6 @@ const TripEdit = () => {
             </div>
           </div>
           
-          {/* Route Notice */}
           <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
             <div className="flex items-start gap-3">
               <div className="text-yellow-600">💡</div>
@@ -527,4 +568,4 @@ const TripEdit = () => {
   );
 };
 
-export default TripEdit;
+export default TripEditWithChecklist;

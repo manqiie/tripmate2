@@ -1,11 +1,15 @@
-// src/components/trip/TripDetailClean.jsx - Back to clean, focused version
+// src/components/trip/TripDetailSimplified.jsx - Updated with checklist tab
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Calendar, Users, Clock, Route, ChevronDown, ChevronUp, Star, Search } from 'lucide-react';
+import { 
+  ArrowLeft, MapPin, Calendar, Users, Clock, Route, ChevronDown, ChevronUp, 
+  Star, Search, CheckSquare, Camera, Map, List 
+} from 'lucide-react';
 import GoogleMap from '../maps/GoogleMap';
 import ModernPlaceSearch from '../places/ModernPlaceSearch';
 import FavoritesManager from '../places/FavoritesManager';
 import TripMemories from '../media/TripMemories';
+import TripChecklist from './TripChecklist';
 import api from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import googleMapsService from '../../services/googleMaps';
@@ -19,6 +23,9 @@ const TripDetailSimplified = () => {
   const [trip, setTrip] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  
+  // Tab state
+  const [activeTab, setActiveTab] = useState('overview');
   
   // Map and route state
   const [selectedStop, setSelectedStop] = useState(0);
@@ -310,6 +317,10 @@ const TripDetailSimplified = () => {
     }
   };
 
+  const handleTripUpdate = (updatedTrip) => {
+    setTrip(updatedTrip);
+  };
+
   if (authLoading || loading) {
     return (
       <div className="flex justify-center items-center min-h-[60vh]">
@@ -364,7 +375,21 @@ const TripDetailSimplified = () => {
           </button>
         </div>
 
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">{trip.title}</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">{trip.title}</h1>
+        
+        {/* Trip Type Badge */}
+        <div className="flex items-center gap-2 mb-6">
+          {trip.trip_type_display && (
+            <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">
+              {trip.trip_type_display}
+            </span>
+          )}
+          {trip.checklist_progress !== undefined && (
+            <span className="inline-block px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">
+              {trip.checklist_progress}% Complete
+            </span>
+          )}
+        </div>
 
         {/* Trip Info Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -433,178 +458,241 @@ const TripDetailSimplified = () => {
         )}
       </div>
 
-      {/* Main Content - Stops and Map */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[600px]">
-        {/* Left Side - Expandable Stops List */}
-        <div className="bg-white rounded-xl shadow-lg p-6 overflow-y-auto">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900">
-              Route Stops ({stops.length})
-            </h2>
+      {/* Navigation Tabs */}
+      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+        <div className="border-b border-gray-200">
+          <nav className="flex">
+            <button
+              onClick={() => setActiveTab('overview')}
+              className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'overview'
+                  ? 'border-blue-500 text-blue-600 bg-blue-50'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Map className="w-4 h-4" />
+              Route & Map
+            </button>
             
-            {/* View Toggle */}
-            <div className="flex gap-2">
-              <button
-                onClick={showFullRoute}
-                className={`px-3 py-1 text-sm rounded-lg transition-colors ${
-                  mapMode === 'route' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                Full Route
-              </button>
-              <span className="text-sm text-gray-500 self-center">
-                {mapMode === 'stop' ? `Stop ${selectedStop + 1}` : 'All Stops'}
-              </span>
-            </div>
-          </div>
-          
-          {/* Expandable Stops */}
-          <div className="space-y-3">
-            {stops.map((stop, index) => {
-              const isExpanded = expandedStop === index;
-              const stopKey = `${id}_${index}`;
-              const stopFavorites = favoritesByStop[stopKey] || [];
-              const currentLocation = stopCoordinates[index];
-              
-              return (
-                <div
-                  key={stop.id}
-                  className={`rounded-lg border-2 transition-all ${
-                    selectedStop === index
-                      ? mapMode === 'stop'
-                        ? 'border-green-500 bg-green-50'
-                        : 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  {/* Stop Header */}
-                  <div
-                    onClick={() => handleStopClick(index)}
-                    className="p-4 cursor-pointer"
-                  >
-                    <div className="flex items-start gap-3">
-                      {/* Stop Number/Icon */}
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                        getStopIconColor(stop, index)
-                      }`}>
-                        {getStopIcon(stop, index)}
-                      </div>
+            <button
+              onClick={() => setActiveTab('checklist')}
+              className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'checklist'
+                  ? 'border-blue-500 text-blue-600 bg-blue-50'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <CheckSquare className="w-4 h-4" />
+              Trip Checklist
+              {trip.checklist_progress !== undefined && (
+                <span className="ml-1 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">
+                  {trip.checklist_progress}%
+                </span>
+              )}
+            </button>
+            
+            <button
+              onClick={() => setActiveTab('memories')}
+              className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'memories'
+                  ? 'border-blue-500 text-blue-600 bg-blue-50'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Camera className="w-4 h-4" />
+              Memories
+            </button>
+          </nav>
+        </div>
 
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-gray-900 mb-1">{stop.name}</h3>
-                        <p className="text-sm text-gray-600 mb-2">{stop.description}</p>
-                        
-                        {/* Favorites count */}
-                        {stopFavorites.length > 0 && (
-                          <div className="flex items-center gap-1 text-xs text-blue-600 mb-2">
-                            <Star className="w-3 h-3 fill-current" />
-                            <span>{stopFavorites.length} saved place{stopFavorites.length !== 1 ? 's' : ''}</span>
+        {/* Tab Content */}
+        <div className="p-6">
+          {/* Overview Tab - Route and Map */}
+          {activeTab === 'overview' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[600px]">
+              {/* Left Side - Expandable Stops List */}
+              <div className="overflow-y-auto">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-gray-900">
+                    Route Stops ({stops.length})
+                  </h2>
+                  
+                  {/* View Toggle */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={showFullRoute}
+                      className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+                        mapMode === 'route' 
+                          ? 'bg-blue-600 text-white' 
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      Full Route
+                    </button>
+                    <span className="text-sm text-gray-500 self-center">
+                      {mapMode === 'stop' ? `Stop ${selectedStop + 1}` : 'All Stops'}
+                    </span>
+                  </div>
+                </div>
+                
+                {/* Expandable Stops */}
+                <div className="space-y-3">
+                  {stops.map((stop, index) => {
+                    const isExpanded = expandedStop === index;
+                    const stopKey = `${id}_${index}`;
+                    const stopFavorites = favoritesByStop[stopKey] || [];
+                    const currentLocation = stopCoordinates[index];
+                    
+                    return (
+                      <div
+                        key={stop.id}
+                        className={`rounded-lg border-2 transition-all ${
+                          selectedStop === index
+                            ? mapMode === 'stop'
+                              ? 'border-green-500 bg-green-50'
+                              : 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        {/* Stop Header */}
+                        <div
+                          onClick={() => handleStopClick(index)}
+                          className="p-4 cursor-pointer"
+                        >
+                          <div className="flex items-start gap-3">
+                            {/* Stop Number/Icon */}
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                              getStopIconColor(stop, index)
+                            }`}>
+                              {getStopIcon(stop, index)}
+                            </div>
+
+                            <div className="flex-1">
+                              <h3 className="font-semibold text-gray-900 mb-1">{stop.name}</h3>
+                              <p className="text-sm text-gray-600 mb-2">{stop.description}</p>
+                              
+                              {/* Favorites count */}
+                              {stopFavorites.length > 0 && (
+                                <div className="flex items-center gap-1 text-xs text-blue-600 mb-2">
+                                  <Star className="w-3 h-3 fill-current" />
+                                  <span>{stopFavorites.length} saved place{stopFavorites.length !== 1 ? 's' : ''}</span>
+                                </div>
+                              )}
+                              
+                              {/* Click hints */}
+                              <div className="text-xs text-blue-600">
+                                💡 Click to view on map
+                              </div>
+                            </div>
+
+                            {/* Expand/Collapse button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleStopExpansion(index);
+                              }}
+                              className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                            >
+                              {isExpanded ? (
+                                <ChevronUp className="w-5 h-5" />
+                              ) : (
+                                <ChevronDown className="w-5 h-5" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Expanded Content */}
+                        {isExpanded && currentLocation && (
+                          <div className="px-4 pb-4 border-t border-gray-200 bg-gray-50">
+                            <div className="pt-4 space-y-4">
+                              <h4 className="font-medium text-gray-800 flex items-center gap-2">
+                                <Search className="w-4 h-4" />
+                                Explore {stop.name}
+                              </h4>
+                              
+                              {/* Places Search */}
+                              <ModernPlaceSearch
+                                location={currentLocation}
+                                favorites={stopFavorites}
+                                onToggleFavorite={(place) => handleToggleFavorite(index, place)}
+                              />
+                              
+                              {/* Favorites for this stop */}
+                              {stopFavorites.length > 0 && (
+                                <div className="mt-4">
+                                  <FavoritesManager
+                                    favorites={stopFavorites}
+                                    onRemoveFavorite={(place) => handleRemoveFavorite(index, place)}
+                                    onPlaceSelect={(place) => console.log('Selected place:', place)}
+                                  />
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
-                        
-                        {/* Click hints */}
-                        <div className="text-xs text-blue-600">
-                          💡 Click to view on map
-                        </div>
                       </div>
+                    );
+                  })}
+                </div>
+              </div>
 
-                      {/* Expand/Collapse button */}
+              {/* Right Side - Map */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-gray-900">Route Map</h2>
+                  <div className="flex items-center gap-3">
+                    {mapMode === 'stop' && (
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleStopExpansion(index);
-                        }}
-                        className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                        onClick={showFullRoute}
+                        className="text-sm text-blue-600 hover:text-blue-700 underline"
                       >
-                        {isExpanded ? (
-                          <ChevronUp className="w-5 h-5" />
-                        ) : (
-                          <ChevronDown className="w-5 h-5" />
-                        )}
+                        ← Back to Full Route
                       </button>
+                    )}
+                    <div className="text-sm text-gray-600">
+                      {mapMode === 'stop' 
+                        ? `📍 ${stops[selectedStop]?.name}` 
+                        : `🗺️ Complete Route`
+                      }
                     </div>
                   </div>
-
-                  {/* Expanded Content */}
-                  {isExpanded && currentLocation && (
-                    <div className="px-4 pb-4 border-t border-gray-200 bg-gray-50">
-                      <div className="pt-4 space-y-4">
-                        <h4 className="font-medium text-gray-800 flex items-center gap-2">
-                          <Search className="w-4 h-4" />
-                          Explore {stop.name}
-                        </h4>
-                        
-                        {/* Places Search */}
-                        <ModernPlaceSearch
-                          location={currentLocation}
-                          favorites={stopFavorites}
-                          onToggleFavorite={(place) => handleToggleFavorite(index, place)}
-                        />
-                        
-                        {/* Favorites for this stop */}
-                        {stopFavorites.length > 0 && (
-                          <div className="mt-4">
-                            <FavoritesManager
-                              favorites={stopFavorites}
-                              onRemoveFavorite={(place) => handleRemoveFavorite(index, place)}
-                              onPlaceSelect={(place) => console.log('Selected place:', place)}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
                 </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Right Side - Map */}
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900">Route Map</h2>
-            <div className="flex items-center gap-3">
-              {mapMode === 'stop' && (
-                <button
-                  onClick={showFullRoute}
-                  className="text-sm text-blue-600 hover:text-blue-700 underline"
-                >
-                  ← Back to Full Route
-                </button>
-              )}
-              <div className="text-sm text-gray-600">
-                {mapMode === 'stop' 
-                  ? `📍 ${stops[selectedStop]?.name}` 
-                  : `🗺️ Complete Route`
-                }
+                
+                <div className="h-full">
+                  <GoogleMap
+                    center={mapConfig.center}
+                    zoom={mapConfig.zoom}
+                    route={mapConfig.route}
+                    routeInfo={mapConfig.routeInfo}
+                    markers={mapConfig.markers}
+                    className="w-full h-[500px] rounded-lg"
+                  />
+                </div>
               </div>
             </div>
-          </div>
-          
-          <div className="h-full">
-            <GoogleMap
-              center={mapConfig.center}
-              zoom={mapConfig.zoom}
-              route={mapConfig.route}
-              routeInfo={mapConfig.routeInfo}
-              markers={mapConfig.markers}
-              className="w-full h-[500px] rounded-lg"
+          )}
+
+          {/* Checklist Tab */}
+          {activeTab === 'checklist' && (
+            <TripChecklist 
+              trip={trip} 
+              onUpdate={handleTripUpdate}
             />
-          </div>
+          )}
+
+          {/* Memories Tab */}
+          {activeTab === 'memories' && (
+            <TripMemories 
+              tripId={trip.id} 
+              stops={stops} 
+              stopCoordinates={stopCoordinates}
+              selectedStop={selectedStop}
+              onStopSelect={setSelectedStop}
+            />
+          )}
         </div>
       </div>
-
-      {/* Trip Memories Component - Now includes Timeline button */}
-      <TripMemories 
-        tripId={trip.id} 
-        stops={stops} 
-        stopCoordinates={stopCoordinates}
-        selectedStop={selectedStop}
-        onStopSelect={setSelectedStop}
-      />
 
       {/* Trip Summary */}
       <div className="bg-white rounded-xl shadow-lg p-6">
@@ -618,6 +706,9 @@ const TripDetailSimplified = () => {
               {trip.waypoints && trip.waypoints.filter(wp => wp.trim()).length > 0 && (
                 <p><span className="font-medium">Waypoints:</span> {trip.waypoints.filter(wp => wp.trim()).length}</p>
               )}
+              {trip.trip_type_display && (
+                <p><span className="font-medium">Trip Type:</span> {trip.trip_type_display}</p>
+              )}
             </div>
           </div>
           
@@ -626,7 +717,10 @@ const TripDetailSimplified = () => {
             <div className="space-y-2 text-sm">
               <p><span className="font-medium">Total Distance:</span> {trip.total_distance} km</p>
               <p><span className="font-medium">Estimated Time:</span> {formatDuration(trip.total_duration)}</p>
-              <p><span className="font-medium">Trip Type:</span> {routeInfo?.isFlightRoute ? 'Flight Route' : 'Driving Route'}</p>
+              <p><span className="font-medium">Route Type:</span> {routeInfo?.isFlightRoute ? 'Flight Route' : 'Driving Route'}</p>
+              {trip.checklist_data && (
+                <p><span className="font-medium">Checklist:</span> {trip.checklist_data.length} items ({trip.checklist_progress}% complete)</p>
+              )}
             </div>
           </div>
         </div>
