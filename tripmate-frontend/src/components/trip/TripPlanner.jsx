@@ -222,6 +222,22 @@ const TripPlanner = () => {
           </div>
         )}
 
+        {!user && (
+          <div className="bg-blue-50 border border-blue-200 text-blue-800 p-4 rounded-lg mb-4">
+            <div className="flex items-start gap-3">
+              <div className="text-blue-600">ℹ️</div>
+              <div>
+                <h4 className="font-medium mb-1">Sign in to Save Your Trip</h4>
+                <p className="text-sm text-blue-700">
+                  You can plan and view your complete route without an account, but you'll need to 
+                  <a href="/auth" className="font-medium underline hover:text-blue-900 mx-1">sign in</a>
+                  to save your trip plans and access them later.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left Column - Trip Details */}
           <div className="space-y-4">
@@ -525,7 +541,7 @@ const TripPlanner = () => {
           </div>
         </div>
       )}
-      
+      */}
 
       {/* Route Information */}
       {routeResult && (
