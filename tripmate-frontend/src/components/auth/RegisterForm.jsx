@@ -1,4 +1,4 @@
-// src/components/auth/RegisterForm.jsx
+// src/components/auth/RegisterForm.jsx - Updated to redirect on success
 import React, { useState } from 'react';
 import { Eye, EyeOff, User, Mail, Lock } from 'lucide-react';
 import Input from '../common/Input';
@@ -17,6 +17,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(''); // Add success state
   const { register } = useAuth();
 
   const handleChange = (e) => {
@@ -29,10 +30,26 @@ const RegisterForm = ({ onSwitchToLogin }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrors({});
+    setSuccess('');
     setLoading(true);
     
     const result = await register(formData);
-    if (!result.success) {
+    if (result.success) {
+      setSuccess(result.message || 'Account created successfully!');
+      // Clear form
+      setFormData({
+        username: '',
+        email: '',
+        password: '',
+        password2: '',
+        first_name: '',
+        last_name: ''
+      });
+      // Redirect to login after 2 seconds
+      setTimeout(() => {
+        onSwitchToLogin();
+      }, 2000);
+    } else {
       setErrors(result.error);
     }
     setLoading(false);
@@ -44,6 +61,14 @@ const RegisterForm = ({ onSwitchToLogin }) => {
         <h2 className="text-3xl font-bold text-gray-900 mb-2">Create Account</h2>
         <p className="text-gray-600">Join TripMate to start planning amazing trips</p>
       </div>
+
+      {success && (
+        <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm">
+          {success}
+          <br />
+          <span className="text-xs">Redirecting to sign in...</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-4">
         <Input
@@ -121,8 +146,8 @@ const RegisterForm = ({ onSwitchToLogin }) => {
         />
       </div>
 
-      <Button type="submit" disabled={loading}>
-        {loading ? 'Creating Account...' : 'Create Account'}
+      <Button type="submit" disabled={loading || success}>
+        {loading ? 'Creating Account...' : success ? 'Account Created!' : 'Create Account'}
       </Button>
 
       <div className="text-center">
@@ -131,6 +156,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
           type="button"
           onClick={onSwitchToLogin}
           className="text-blue-600 font-medium hover:underline"
+          disabled={loading}
         >
           Sign in
         </button>
