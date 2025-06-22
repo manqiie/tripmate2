@@ -18,6 +18,7 @@ from .models import PasswordResetToken
 
 User = get_user_model()
 
+# accounts/views.py - Updated register function
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register(request):
@@ -25,13 +26,13 @@ def register(request):
     serializer = RegisterSerializer(data=request.data)
     if serializer.is_valid():
         user = serializer.save()
-        # return success message
+        # Don't create token - just return success message
         return Response({
             'message': 'Account created successfully! Please sign in to continue.',
             'user': UserSerializer(user).data
         }, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
+    
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login(request):

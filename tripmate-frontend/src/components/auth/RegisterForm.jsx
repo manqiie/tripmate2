@@ -25,6 +25,10 @@ const RegisterForm = ({ onSwitchToLogin }) => {
     if (errors[e.target.name]) {
       setErrors({ ...errors, [e.target.name]: '' });
     }
+    // Clear success message when user starts typing again
+    if (success) {
+      setSuccess('');
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -77,7 +81,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
           placeholder="First Name"
           value={formData.first_name}
           onChange={handleChange}
-          error={errors.first_name}
+          error={errors.first_name?.[0] || errors.first_name}
           required
         />
         <Input
@@ -86,7 +90,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
           placeholder="Last Name"
           value={formData.last_name}
           onChange={handleChange}
-          error={errors.last_name}
+          error={errors.last_name?.[0] || errors.last_name}
           required
         />
       </div>
@@ -99,7 +103,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
           placeholder="Username"
           value={formData.username}
           onChange={handleChange}
-          error={errors.username}
+          error={errors.username?.[0] || errors.username}
           required
         />
 
@@ -110,7 +114,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
           placeholder="Email"
           value={formData.email}
           onChange={handleChange}
-          error={errors.email}
+          error={errors.email?.[0] || errors.email}
           required
         />
 
@@ -141,7 +145,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
           placeholder="Confirm Password"
           value={formData.password2}
           onChange={handleChange}
-          error={errors.password2}
+          error={errors.password2?.[0] || errors.password2}
           required
         />
       </div>
