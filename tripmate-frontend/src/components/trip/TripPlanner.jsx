@@ -446,7 +446,7 @@ const TripPlanner = () => {
                   ) : (
                     <>
                       <Save className="w-5 h-5" />
-                      Save Trip with Checklist
+                      Save Trip 
                     </>
                   )}
                 </button>
