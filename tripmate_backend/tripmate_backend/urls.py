@@ -19,6 +19,10 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+admin.site.site_header = "TripMate Administration"
+admin.site.site_title = "TripMate Admin"
+admin.site.index_title = "Welcome to TripMate Administration Portal"
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('accounts.urls')),
