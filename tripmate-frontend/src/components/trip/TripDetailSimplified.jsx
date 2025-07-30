@@ -1,5 +1,7 @@
-// src/components/trip/TripDetailSimplified.jsx - Enhanced with place saving
-import React, { useState, useEffect } from 'react';
+// Minimal changes to your existing TripDetailSimplified.jsx
+// Only add the click navigation functionality, keep everything else the same
+
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, MapPin, Calendar, Users, Clock, Route, ChevronDown, ChevronUp, 
@@ -40,7 +42,7 @@ const TripDetailSimplified = () => {
   // Favorites state (per stop)
   const [favoritesByStop, setFavoritesByStop] = useState({});
   
-  // NEW: Trip places state
+  // Trip places state
   const [savedTripPlaces, setSavedTripPlaces] = useState([]);
   const [tripPlacesByStop, setTripPlacesByStop] = useState({});
 
@@ -52,10 +54,10 @@ const TripDetailSimplified = () => {
     }
     fetchTripDetail();
     loadAllFavorites();
-    fetchSavedTripPlaces(); // NEW: Load saved places
+    fetchSavedTripPlaces();
   }, [id, user, authLoading]);
 
-  // NEW: Fetch saved trip places
+  // Fetch saved trip places
   const fetchSavedTripPlaces = async () => {
     try {
       const response = await api.get(`/trips/${id}/places/`);
@@ -75,7 +77,7 @@ const TripDetailSimplified = () => {
     }
   };
 
-  // NEW: Save place to trip
+  // Save place to trip
   const handleSavePlaceToTrip = async (placeData) => {
     try {
       const response = await api.post(`/trips/${id}/places/`, placeData);
@@ -94,7 +96,7 @@ const TripDetailSimplified = () => {
       if (error.response?.data?.code === 'DUPLICATE_PLACE') {
         alert('This place is already saved to your trip.');
       } else {
-        throw error; // Re-throw to be handled by caller
+        throw error;
       }
     }
   };
@@ -308,11 +310,32 @@ const TripDetailSimplified = () => {
     saveFavoritesForStop(stopIndex, newFavorites);
   };
 
-  // NEW: Handle place click on map
-  const handlePlaceClick = (place) => {
-    console.log('Place clicked on map:', place);
-    // You can show additional info or navigate to the place
-  };
+  // NEW: Handle place click - navigate to place on map (MINIMAL ADDITION)
+  const handlePlaceClick = useCallback((place) => {
+    if (window.navigateToPlace) {
+      window.navigateToPlace(place);
+    }
+    console.log('Navigating to place:', place);
+  }, []);
+
+  // NEW: Handle saved place click - convert to proper format and navigate (MINIMAL ADDITION)
+  const handleSavedPlaceClick = useCallback((savedPlace) => {
+    const placeForNavigation = {
+      id: savedPlace.place_id,
+      name: savedPlace.name,
+      address: savedPlace.address,
+      location: {
+        lat: savedPlace.latitude,
+        lng: savedPlace.longitude
+      },
+      rating: savedPlace.rating,
+      types: savedPlace.types,
+      phone: savedPlace.phone,
+      website: savedPlace.website
+    };
+    
+    handlePlaceClick(placeForNavigation);
+  }, [handlePlaceClick]);
 
   const getMapConfig = () => {
     // Combine bookmarked places and saved trip places for map display
@@ -410,7 +433,7 @@ const TripDetailSimplified = () => {
     setTrip(updatedTrip);
   };
 
-  // NEW: Enhanced place search component with trip saving
+  // Enhanced place search component with trip saving (KEEP SAME STYLING)
   const EnhancedPlaceSearchWithTrip = ({ 
     location, 
     favorites, 
@@ -508,7 +531,7 @@ const TripDetailSimplified = () => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      {/* Header */}
+      {/* Header - KEEP EXACTLY THE SAME */}
       <div className="bg-white rounded-xl shadow-lg p-6">
         <div className="flex items-center justify-between mb-4">
           <button
@@ -529,7 +552,7 @@ const TripDetailSimplified = () => {
 
         <h1 className="text-3xl font-bold text-gray-900 mb-2">{trip.title}</h1>
         
-        {/* Trip Type Badge and Stats */}
+        {/* Trip Type Badge and Stats - KEEP EXACTLY THE SAME */}
         <div className="flex items-center gap-2 mb-6">
           {trip.trip_type_display && (
             <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">
@@ -541,7 +564,6 @@ const TripDetailSimplified = () => {
               {trip.checklist_progress}% Complete
             </span>
           )}
-          {/* NEW: Saved places count */}
           {savedTripPlaces.length > 0 && (
             <span className="inline-block px-3 py-1 bg-yellow-100 text-yellow-800 text-sm font-medium rounded-full">
               {savedTripPlaces.length} Places Saved
@@ -549,7 +571,7 @@ const TripDetailSimplified = () => {
           )}
         </div>
 
-        {/* Trip Info Cards */}
+        {/* Trip Info Cards - KEEP EXACTLY THE SAME */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-blue-50 p-4 rounded-lg">
             <div className="flex items-center gap-2 mb-2">
@@ -599,7 +621,7 @@ const TripDetailSimplified = () => {
           </div>
         </div>
 
-        {/* Flight Route Notice */}
+        {/* Flight Route Notice - KEEP EXACTLY THE SAME */}
         {routeInfo?.isFlightRoute && (
           <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
             <div className="flex items-start gap-3">
@@ -616,7 +638,7 @@ const TripDetailSimplified = () => {
         )}
       </div>
 
-      {/* Navigation Tabs */}
+      {/* Navigation Tabs - KEEP EXACTLY THE SAME */}
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">
         <div className="border-b border-gray-200">
           <nav className="flex">
@@ -630,7 +652,6 @@ const TripDetailSimplified = () => {
             >
               <Map className="w-4 h-4" />
               Route & Places
-              {/* NEW: Show places count */}
               {savedTripPlaces.length > 0 && (
                 <span className="ml-1 px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full">
                   {savedTripPlaces.length}
@@ -671,7 +692,7 @@ const TripDetailSimplified = () => {
 
         {/* Tab Content */}
         <div className="p-6">
-          {/* Overview Tab - Route and Map */}
+          {/* Overview Tab - KEEP MOSTLY THE SAME, ONLY ADD CLICK HANDLERS */}
           {activeTab === 'overview' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[600px]">
               {/* Left Side - Expandable Stops List */}
@@ -699,7 +720,7 @@ const TripDetailSimplified = () => {
                   </div>
                 </div>
                 
-                {/* Expandable Stops */}
+                {/* Expandable Stops - KEEP EXACTLY THE SAME STYLING */}
                 <div className="space-y-3">
                   {stops.map((stop, index) => {
                     const isExpanded = expandedStop === index;
@@ -719,7 +740,7 @@ const TripDetailSimplified = () => {
                             : 'border-gray-200 hover:border-gray-300'
                         }`}
                       >
-                        {/* Stop Header */}
+                        {/* Stop Header - KEEP EXACTLY THE SAME */}
                         <div
                           onClick={() => handleStopClick(index)}
                           className="p-4 cursor-pointer"
@@ -744,7 +765,6 @@ const TripDetailSimplified = () => {
                                     <span>{stopFavorites.length} favorite{stopFavorites.length !== 1 ? 's' : ''}</span>
                                   </div>
                                 )}
-                                {/* NEW: Show saved places count */}
                                 {stopSavedPlaces.length > 0 && (
                                   <div className="flex items-center gap-1 text-green-600">
                                     <MapPin className="w-3 h-3" />
@@ -794,7 +814,7 @@ const TripDetailSimplified = () => {
                                 savedTripPlaces={stopSavedPlaces}
                               />
                               
-                              {/* NEW: Show saved places for this stop */}
+                              {/* Show saved places for this stop - ADD CLICK HANDLERS */}
                               {stopSavedPlaces.length > 0 && (
                                 <div className="mt-4">
                                   <h5 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
@@ -803,7 +823,11 @@ const TripDetailSimplified = () => {
                                   </h5>
                                   <div className="space-y-2">
                                     {stopSavedPlaces.map(place => (
-                                      <div key={place.id} className="bg-white rounded-lg p-3 border border-green-200">
+                                      <div 
+                                        key={place.id} 
+                                        className="bg-white rounded-lg p-3 border border-green-200 cursor-pointer hover:border-green-300 hover:shadow-sm transition-all"
+                                        onClick={() => handleSavedPlaceClick(place)}
+                                      >
                                         <div className="flex items-start justify-between">
                                           <div className="flex-1">
                                             <h6 className="font-medium text-gray-900">{place.name}</h6>
@@ -817,6 +841,7 @@ const TripDetailSimplified = () => {
                                                 )}
                                               </div>
                                             )}
+                                          
                                           </div>
                                           <div className="flex items-center gap-1">
                                             <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
@@ -836,7 +861,7 @@ const TripDetailSimplified = () => {
                                   <FavoritesManager
                                     favorites={stopFavorites}
                                     onRemoveFavorite={(place) => handleRemoveFavorite(index, place)}
-                                    onPlaceSelect={(place) => console.log('Selected place:', place)}
+                                    onPlaceSelect={handlePlaceClick}
                                   />
                                 </div>
                               )}
@@ -924,7 +949,6 @@ const TripDetailSimplified = () => {
               {trip.trip_type_display && (
                 <p><span className="font-medium">Trip Type:</span> {trip.trip_type_display}</p>
               )}
-              {/* NEW: Saved places summary */}
               {savedTripPlaces.length > 0 && (
                 <p><span className="font-medium">Saved Places:</span> {savedTripPlaces.length} locations</p>
               )}

@@ -1,4 +1,4 @@
-// src/components/maps/GoogleMap.jsx - Enhanced with bookmark display and place selection
+// Enhanced GoogleMap.jsx with all features - Complete version
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import googleMapsService from '../../services/googleMaps';
 
@@ -8,10 +8,13 @@ const GoogleMap = ({
   route = null,
   routeInfo = null,
   markers = [],
-  bookmarkedPlaces = [], // NEW: Bookmarked places to show
+  bookmarkedPlaces = [], // Bookmarked places to show
   onMapClick = null,
-  onPlaceClick = null, // NEW: Callback when a place is clicked
-  showBookmarks = true, // NEW: Toggle bookmark visibility
+  onPlaceClick = null, // Callback when a place is clicked
+  onBookmarkPlace = null, // NEW: Callback to bookmark a place from nearby results
+  showBookmarks = true, // Toggle bookmark visibility
+  nearbyPlaces = [], // NEW: For showing category search results
+  selectedCategory = null, // NEW: Current category being searched
   className = "w-full h-96"
 }) => {
   const mapRef = useRef(null);
@@ -19,7 +22,8 @@ const GoogleMap = ({
   const directionsRendererRef = useRef(null);
   const flightPathRef = useRef([]);
   const markersRef = useRef([]);
-  const bookmarkMarkersRef = useRef([]); // NEW: Bookmark markers
+  const bookmarkMarkersRef = useRef([]); // Bookmark markers
+  const nearbyMarkersRef = useRef([]); // NEW: For category search results
   
   const [isLoaded, setIsLoaded] = useState(false);
   const [apiLoaded, setApiLoaded] = useState(false);
@@ -38,6 +42,11 @@ const GoogleMap = ({
   // Memoize bookmarked places to prevent unnecessary re-renders
   const memoizedBookmarkedPlaces = useMemo(() => bookmarkedPlaces, [
     JSON.stringify(bookmarkedPlaces?.map(p => ({ id: p.id, location: p.location })))
+  ]);
+
+  // NEW: Memoize nearby places to prevent unnecessary re-renders
+  const memoizedNearbyPlaces = useMemo(() => nearbyPlaces, [
+    JSON.stringify(nearbyPlaces?.map(p => ({ id: p.id, location: p.location })))
   ]);
 
   // Load Google Maps API only once
@@ -95,6 +104,8 @@ const GoogleMap = ({
         streetViewControl: true,
         fullscreenControl: true,
         zoomControl: true,
+        keyboardShortcuts: false,
+      
       });
 
       mapInstanceRef.current = map;
@@ -122,6 +133,8 @@ const GoogleMap = ({
     }
   }, [apiLoaded, memoizedCenter, zoom, onMapClick]);
 
+  
+
   // Handle route rendering
   useEffect(() => {
     if (!isLoaded || !mapInstanceRef.current || !route) {
@@ -139,7 +152,7 @@ const GoogleMap = ({
     }
   }, [route, memoizedRouteInfo, isLoaded]);
 
-  // Handle markers
+  // Handle regular markers
   useEffect(() => {
     if (!isLoaded || !mapInstanceRef.current) {
       return;
@@ -163,7 +176,7 @@ const GoogleMap = ({
 
   }, [markers, isLoaded]);
 
-  // NEW: Handle bookmark markers
+  // Handle bookmark markers with click functionality
   useEffect(() => {
     if (!isLoaded || !mapInstanceRef.current || !showBookmarks) {
       clearBookmarkMarkers();
@@ -178,16 +191,7 @@ const GoogleMap = ({
     // Add bookmark markers
     memoizedBookmarkedPlaces.forEach(place => {
       if (place.location && place.location.lat && place.location.lng) {
-        const bookmarkIcon = {
-          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="12" cy="12" r="12" fill="white" stroke="#fbbf24" stroke-width="2"/>
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="#fbbf24" stroke="#f59e0b" stroke-width="1"/>
-            </svg>
-          `),
-          scaledSize: new window.google.maps.Size(32, 32),
-          anchor: new window.google.maps.Point(16, 16)
-        };
+        const bookmarkIcon = createBookmarkIcon();
 
         const marker = new window.google.maps.Marker({
           position: place.location,
@@ -202,17 +206,24 @@ const GoogleMap = ({
           content: createBookmarkInfoWindowContent(place)
         });
 
-        // Add click listener to show info window and trigger callback
+        // Add click listener for bookmark
         marker.addListener('click', () => {
-          // Close any open info windows
+          // Close other info windows
           bookmarkMarkersRef.current.forEach(({ infoWindow: iw }) => {
+            if (iw) iw.close();
+          });
+          nearbyMarkersRef.current.forEach(({ infoWindow: iw }) => {
             if (iw) iw.close();
           });
           
           // Open this info window
           infoWindow.open(mapInstanceRef.current, marker);
           
-          // Trigger callback if provided
+          // Center map on this place
+          mapInstanceRef.current.setCenter(place.location);
+          mapInstanceRef.current.setZoom(Math.max(mapInstanceRef.current.getZoom(), 15));
+          
+          // Trigger callback
           if (onPlaceClick) {
             onPlaceClick(place);
           }
@@ -224,51 +235,257 @@ const GoogleMap = ({
 
   }, [memoizedBookmarkedPlaces, isLoaded, showBookmarks, onPlaceClick]);
 
-  // NEW: Create content for bookmark info windows
-  const createBookmarkInfoWindowContent = (place) => {
-    const ratingStars = place.rating ? '⭐'.repeat(Math.floor(place.rating)) : '';
-    const placeTypes = place.types ? place.types.slice(0, 2).map(type => 
-      type.replace(/_/g, ' ')
-    ).join(', ') : '';
+  // NEW: Handle nearby places (category search results)
+  useEffect(() => {
+    if (!isLoaded || !mapInstanceRef.current) {
+      clearNearbyMarkers();
+      return;
+    }
 
-    return `
-      <div style="max-width: 250px; padding: 8px;">
-        <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: bold; color: #1f2937;">
-          ${place.name}
-        </h3>
-        <p style="margin: 0 0 8px 0; font-size: 12px; color: #6b7280; line-height: 1.3;">
-          ${place.address || 'Address not available'}
-        </p>
-        ${place.rating ? `
-          <div style="margin: 4px 0; font-size: 12px; color: #374151;">
-            ${ratingStars} ${place.rating.toFixed(1)} 
-            ${place.userRatingsTotal ? `(${place.userRatingsTotal} reviews)` : ''}
-          </div>
-        ` : ''}
-        ${placeTypes ? `
-          <div style="margin: 4px 0;">
-            <span style="background: #dbeafe; color: #1d4ed8; padding: 2px 6px; border-radius: 4px; font-size: 10px;">
-              ${placeTypes}
-            </span>
-          </div>
-        ` : ''}
-        <div style="margin-top: 8px; display: flex; gap: 4px;">
-          <button onclick="window.selectBookmarkedPlace('${place.id}')" 
-                  style="background: #10b981; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">
-            Add to Trip
-          </button>
-          ${place.website ? `
-            <a href="${place.website}" target="_blank" 
-               style="background: #6b7280; color: white; text-decoration: none; padding: 4px 8px; border-radius: 4px; font-size: 11px;">
-              Website
-            </a>
-          ` : ''}
-        </div>
-      </div>
-    `;
+    console.log('🔍 GoogleMap: Updating nearby places markers...');
+
+    clearNearbyMarkers();
+
+    memoizedNearbyPlaces.forEach(place => {
+      if (place.location && place.location.lat && place.location.lng) {
+        const nearbyIcon = createCategoryIcon(selectedCategory);
+
+        const marker = new window.google.maps.Marker({
+          position: place.location,
+          map: mapInstanceRef.current,
+          title: place.name,
+          icon: nearbyIcon,
+          zIndex: 900
+        });
+
+        const infoWindow = new window.google.maps.InfoWindow({
+          content: createNearbyPlaceInfoWindowContent(place)
+        });
+
+        // Add click listener for nearby place
+        marker.addListener('click', () => {
+          // Close other info windows
+          nearbyMarkersRef.current.forEach(({ infoWindow: iw }) => {
+            if (iw) iw.close();
+          });
+          bookmarkMarkersRef.current.forEach(({ infoWindow: iw }) => {
+            if (iw) iw.close();
+          });
+          
+          // Open this info window
+          infoWindow.open(mapInstanceRef.current, marker);
+          
+          // Center map on this place
+          mapInstanceRef.current.setCenter(place.location);
+          mapInstanceRef.current.setZoom(Math.max(mapInstanceRef.current.getZoom(), 16));
+          
+          // Trigger callback
+          if (onPlaceClick) {
+            onPlaceClick(place);
+          }
+        });
+
+        nearbyMarkersRef.current.push({ marker, infoWindow, place });
+      }
+    });
+  }, [memoizedNearbyPlaces, selectedCategory, isLoaded, onPlaceClick]);
+
+  // NEW: Navigate to a specific place
+  const navigateToPlace = useCallback((place) => {
+    if (!mapInstanceRef.current || !place.location) return;
+    
+    console.log('🧭 Navigating to place:', place.name);
+    
+    // Animate to the place
+    mapInstanceRef.current.panTo(place.location);
+    mapInstanceRef.current.setZoom(16);
+    
+    // Find and open the info window for this place
+    const bookmarkMarker = bookmarkMarkersRef.current.find(bm => bm.place.id === place.id);
+    if (bookmarkMarker) {
+      // Close all other info windows
+      [...bookmarkMarkersRef.current, ...nearbyMarkersRef.current].forEach(({ infoWindow }) => {
+        if (infoWindow) infoWindow.close();
+      });
+      
+      // Open this marker's info window
+      bookmarkMarker.infoWindow.open(mapInstanceRef.current, bookmarkMarker.marker);
+    }
+  }, []);
+
+  // Expose navigate function to parent component
+  useEffect(() => {
+    if (onPlaceClick) {
+      window.navigateToPlace = navigateToPlace;
+    }
+    return () => {
+      delete window.navigateToPlace;
+    };
+  }, [navigateToPlace, onPlaceClick]);
+
+  // Create bookmark icon
+  const createBookmarkIcon = () => ({
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="12" fill="white" stroke="#fbbf24" stroke-width="2"/>
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="#fbbf24" stroke="#f59e0b" stroke-width="1"/>
+      </svg>
+    `),
+    scaledSize: new window.google.maps.Size(32, 32),
+    anchor: new window.google.maps.Point(16, 16)
+  });
+
+  // NEW: Create category-specific icons
+  const createCategoryIcon = (category) => {
+    const categoryIcons = {
+      restaurant: { color: '#ef4444', emoji: '🍽️' },
+      lodging: { color: '#3b82f6', emoji: '🏨' },
+      tourist_attraction: { color: '#10b981', emoji: '🎯' },
+      shopping_mall: { color: '#8b5cf6', emoji: '🛍️' },
+      hospital: { color: '#f59e0b', emoji: '🏥' },
+      gas_station: { color: '#06b6d4', emoji: '⛽' },
+      default: { color: '#6b7280', emoji: '📍' }
+    };
+
+    const config = categoryIcons[category] || categoryIcons.default;
+
+    return {
+      url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="11" fill="white" stroke="${config.color}" stroke-width="2"/>
+          <text x="12" y="16" text-anchor="middle" font-size="12">${config.emoji}</text>
+        </svg>
+      `),
+      scaledSize: new window.google.maps.Size(28, 28),
+      anchor: new window.google.maps.Point(14, 14)
+    };
   };
 
-  // NEW: Global function for info window buttons
+// Enhanced createBookmarkInfoWindowContent function with Google Maps details link
+
+// Create bookmark info window content
+const createBookmarkInfoWindowContent = (place) => {
+  const ratingStars = place.rating ? '⭐'.repeat(Math.floor(place.rating)) : '';
+  const placeTypes = place.types ? place.types.slice(0, 2).map(type => 
+    type.replace(/_/g, ' ')
+  ).join(', ') : '';
+
+  // Create Google Maps URL for the place
+  const googleMapsUrl = createGoogleMapsUrl(place);
+
+  return `
+    <div style="max-width: 250px; padding: 8px;">
+      <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: bold; color: #1f2937;">
+        ${place.name}
+      </h3>
+      <p style="margin: 0 0 8px 0; font-size: 12px; color: #6b7280; line-height: 1.3;">
+        ${place.address || 'Address not available'}
+      </p>
+      ${place.rating ? `
+        <div style="margin: 4px 0; font-size: 12px; color: #374151;">
+          ${ratingStars} ${place.rating.toFixed(1)} 
+          ${place.userRatingsTotal ? `(${place.userRatingsTotal} reviews)` : ''}
+        </div>
+      ` : ''}
+      ${placeTypes ? `
+        <div style="margin: 4px 0;">
+          <span style="background: #dbeafe; color: #1d4ed8; padding: 2px 6px; border-radius: 4px; font-size: 10px;">
+            ${placeTypes}
+          </span>
+        </div>
+      ` : ''}
+      <div style="margin-top: 8px; display: flex; gap: 4px; flex-wrap: wrap;">
+        
+        <a href="${googleMapsUrl}" target="_blank" 
+           style="background: #10b981; color: white; text-decoration: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; display: inline-block;">
+          View on Google Maps
+        </a>
+        ${place.website ? `
+          <a href="${place.website}" target="_blank" 
+             style="background: #6b7280; color: white; text-decoration: none; padding: 4px 8px; border-radius: 4px; font-size: 11px;">
+            Website
+          </a>
+        ` : ''}
+      </div>
+    </div>
+  `;
+};
+
+// Helper function to create Google Maps URL
+const createGoogleMapsUrl = (place) => {
+  const baseUrl = 'https://www.google.com/maps';
+  
+  // If we have a place_id (Google Places ID), use that for the most accurate link
+  if (place.place_id || place.id) {
+    const placeId = place.place_id || place.id;
+    return `${baseUrl}/place/?q=place_id:${placeId}`;
+  }
+  
+  // If we have coordinates, use those
+  if (place.location && place.location.lat && place.location.lng) {
+    const lat = place.location.lat;
+    const lng = place.location.lng;
+    const name = encodeURIComponent(place.name || '');
+    return `${baseUrl}/search/?api=1&query=${name}&query_place_id=${lat},${lng}`;
+  }
+  
+  // Fallback to search by name and address
+  const query = encodeURIComponent(`${place.name} ${place.address || ''}`);
+  return `${baseUrl}/search/?api=1&query=${query}`;
+};
+
+// Enhanced createNearbyPlaceInfoWindowContent function with Google Maps details link
+const createNearbyPlaceInfoWindowContent = (place) => {
+  const ratingStars = place.rating ? '⭐'.repeat(Math.floor(place.rating)) : '';
+  const placeTypes = place.types ? place.types.slice(0, 2).map(type => 
+    type.replace(/_/g, ' ')
+  ).join(', ') : '';
+
+  // Create Google Maps URL for the nearby place
+  const googleMapsUrl = createGoogleMapsUrl(place);
+
+  return `
+    <div style="max-width: 250px; padding: 8px;">
+      <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: bold; color: #1f2937;">
+        ${place.name}
+      </h3>
+      <p style="margin: 0 0 8px 0; font-size: 12px; color: #6b7280; line-height: 1.3;">
+        ${place.address || place.vicinity || 'Address not available'}
+      </p>
+      ${place.rating ? `
+        <div style="margin: 4px 0; font-size: 12px; color: #374151;">
+          ${ratingStars} ${place.rating.toFixed(1)} 
+          ${place.userRatingsTotal ? `(${place.userRatingsTotal} reviews)` : ''}
+        </div>
+      ` : ''}
+      ${placeTypes ? `
+        <div style="margin: 4px 0;">
+          <span style="background: #dcfce7; color: #16a34a; padding: 2px 6px; border-radius: 4px; font-size: 10px;">
+            ${placeTypes}
+          </span>
+        </div>
+      ` : ''}
+      <div style="margin-top: 8px; display: flex; gap: 4px; flex-wrap: wrap;">
+        <button onclick="window.bookmarkNearbyPlace('${place.id}')" 
+                style="background: #f59e0b; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">
+          ⭐ Bookmark
+        </button>
+        <a href="${googleMapsUrl}" target="_blank" 
+           style="background: #1d4ed8; color: white; text-decoration: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; display: inline-block;">
+          🗺️ View on Google Maps
+        </a>
+        ${place.website ? `
+          <a href="${place.website}" target="_blank" 
+             style="background: #6b7280; color: white; text-decoration: none; padding: 4px 8px; border-radius: 4px; font-size: 11px;">
+            Website
+          </a>
+        ` : ''}
+      </div>
+    </div>
+  `;
+};
+
+  // Global functions for info window buttons
   useEffect(() => {
     window.selectBookmarkedPlace = (placeId) => {
       const bookmarkData = bookmarkMarkersRef.current.find(b => b.place.id === placeId);
@@ -277,12 +494,21 @@ const GoogleMap = ({
       }
     };
 
+    // NEW: Function to bookmark a nearby place
+    window.bookmarkNearbyPlace = (placeId) => {
+      const nearbyPlace = nearbyMarkersRef.current.find(p => p.place.id === placeId);
+      if (nearbyPlace && onBookmarkPlace) {
+        onBookmarkPlace(nearbyPlace.place);
+      }
+    };
+
     return () => {
       delete window.selectBookmarkedPlace;
+      delete window.bookmarkNearbyPlace;
     };
-  }, [onPlaceClick]);
+  }, [onPlaceClick, onBookmarkPlace]);
 
-  // Clear markers helper
+  // Helper functions for clearing markers
   const clearMarkers = useCallback(() => {
     markersRef.current.forEach(marker => {
       if (marker && marker.setMap) {
@@ -292,7 +518,7 @@ const GoogleMap = ({
     markersRef.current = [];
   }, []);
 
-  // NEW: Clear bookmark markers helper
+  // Clear bookmark markers helper
   const clearBookmarkMarkers = useCallback(() => {
     console.log('🧹 Clearing bookmark markers, count:', bookmarkMarkersRef.current.length);
     bookmarkMarkersRef.current.forEach(({ marker, infoWindow }) => {
@@ -304,6 +530,16 @@ const GoogleMap = ({
       }
     });
     bookmarkMarkersRef.current = [];
+  }, []);
+
+  // NEW: Clear nearby markers
+  const clearNearbyMarkers = useCallback(() => {
+    console.log('🧹 Clearing nearby markers, count:', nearbyMarkersRef.current.length);
+    nearbyMarkersRef.current.forEach(({ marker, infoWindow }) => {
+      if (infoWindow) infoWindow.close();
+      if (marker && marker.setMap) marker.setMap(null);
+    });
+    nearbyMarkersRef.current = [];
   }, []);
 
   // Clear flight paths helper
@@ -574,11 +810,12 @@ const GoogleMap = ({
       clearFlightPaths();
       clearMarkers();
       clearBookmarkMarkers();
+      clearNearbyMarkers();
       if (directionsRendererRef.current) {
         directionsRendererRef.current.setMap(null);
       }
     };
-  }, [clearFlightPaths, clearMarkers, clearBookmarkMarkers]);
+  }, [clearFlightPaths, clearMarkers, clearBookmarkMarkers, clearNearbyMarkers]);
 
   if (error) {
     return (
@@ -646,24 +883,42 @@ const GoogleMap = ({
         </div>
       )}
 
-      {/* NEW: Bookmark indicator */}
-      {showBookmarks && memoizedBookmarkedPlaces.length > 0 && isLoaded && (
-        <div className="absolute top-2 right-2 bg-white rounded-lg shadow-lg px-3 py-2 text-sm z-10">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-            <span className="text-gray-700 font-medium">⭐ {memoizedBookmarkedPlaces.length} Bookmarks</span>
-          </div>
+      {/* Enhanced indicators */}
+      {isLoaded && (
+        <div className="absolute top-2 right-2 space-y-2 z-10">
+          {/* Bookmarks indicator */}
+          {showBookmarks && memoizedBookmarkedPlaces.length > 0 && (
+            <div className="bg-white rounded-lg shadow-lg px-3 py-2 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                <span className="text-gray-700 font-medium">⭐ {memoizedBookmarkedPlaces.length} Bookmarks</span>
+              </div>
+            </div>
+          )}
+          
+          {/* Category search indicator */}
+          {memoizedNearbyPlaces.length > 0 && selectedCategory && (
+            <div className="bg-white rounded-lg shadow-lg px-3 py-2 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                <span className="text-gray-700 font-medium">
+                  🔍 {memoizedNearbyPlaces.length} {selectedCategory.replace(/_/g, ' ')}s
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Debug info for flight routes */}
-      {route && memoizedRouteInfo?.isFlightRoute && isLoaded && (
+      {/* Debug info for development */}
+      {route && memoizedRouteInfo?.isFlightRoute && isLoaded && process.env.NODE_ENV === 'development' && (
         <div className="absolute bottom-2 left-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 text-xs z-10 max-w-xs">
           <div className="text-orange-800">
             <div className="font-medium">Debug Info:</div>
             <div>Coordinates: {memoizedRouteInfo.coordinates?.length || 0}</div>
-            <div>Paths rendered: {flightPathRef.current.length}</div>
-            <div>Bookmarks shown: {bookmarkMarkersRef.current.length}</div>
+            <div>Flight paths: {flightPathRef.current.length}</div>
+            <div>Bookmarks: {bookmarkMarkersRef.current.length}</div>
+            <div>Nearby places: {nearbyMarkersRef.current.length}</div>
             <div>Has bounds: {memoizedRouteInfo.bounds ? 'Yes' : 'No'}</div>
           </div>
         </div>

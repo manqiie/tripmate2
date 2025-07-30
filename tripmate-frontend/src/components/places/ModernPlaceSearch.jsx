@@ -1,18 +1,22 @@
-// src/components/places/ModernPlaceSearch.jsx - Enhanced with extra actions support
+// Enhanced ModernPlaceSearch.jsx with category search functionality
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Search, Star, MapPin, X } from 'lucide-react';
+import { Search, Star, MapPin, X, Filter, Hotel, Utensils, ShoppingBag, Car, Plane, Hospital } from 'lucide-react';
 
 const ModernPlaceSearch = ({ 
   location, 
   favorites = [], 
   onToggleFavorite,
-  renderExtraActions // NEW: Function to render additional action buttons
+  onCategorySearch, // NEW: Callback for category-based search
+  onPlaceClick, // NEW: Callback when a place is clicked
+  renderExtraActions
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [error, setError] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [showCategoryFilter, setShowCategoryFilter] = useState(false);
   
   // Refs for cleanup and preventing duplicate calls
   const searchRef = useRef(null);
@@ -22,46 +26,57 @@ const ModernPlaceSearch = ({
   const lastLocationRef = useRef(null);
   const searchTimeoutRef = useRef(null);
 
-  // Debounced search with cleanup and duplicate prevention
-  useEffect(() => {
-    // Clear previous timeout
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
+  // Category definitions with Google Places API types
+  const categoryDefinitions = [
+    {
+      id: 'restaurant',
+      name: 'Restaurants',
+      icon: Utensils,
+      color: 'red',
+      googleTypes: ['restaurant', 'meal_takeaway', 'food'],
+      keywords: ['restaurant', 'food', 'dining', 'eat', 'cafe', 'bar', 'pub']
+    },
+    {
+      id: 'lodging',
+      name: 'Hotels',
+      icon: Hotel,
+      color: 'blue',
+      googleTypes: ['lodging'],
+      keywords: ['hotel', 'accommodation', 'stay', 'lodge', 'resort', 'inn', 'motel']
+    },
+    {
+      id: 'tourist_attraction',
+      name: 'Attractions',
+      icon: MapPin,
+      color: 'green',
+      googleTypes: ['tourist_attraction', 'museum', 'park'],
+      keywords: ['attraction', 'tourist', 'museum', 'park', 'temple', 'monument', 'landmark']
+    },
+    {
+      id: 'shopping_mall',
+      name: 'Shopping',
+      icon: ShoppingBag,
+      color: 'purple',
+      googleTypes: ['shopping_mall', 'store'],
+      keywords: ['shop', 'mall', 'store', 'market', 'shopping', 'retail']
+    },
+    {
+      id: 'gas_station',
+      name: 'Gas Stations',
+      icon: Car,
+      color: 'orange',
+      googleTypes: ['gas_station'],
+      keywords: ['gas', 'fuel', 'petrol', 'station']
+    },
+    {
+      id: 'hospital',
+      name: 'Healthcare',
+      icon: Hospital,
+      color: 'pink',
+      googleTypes: ['hospital', 'doctor', 'pharmacy'],
+      keywords: ['hospital', 'doctor', 'clinic', 'pharmacy', 'medical', 'health']
     }
-
-    // Don't search if query is too short
-    if (searchQuery.length <= 2) {
-      setSearchResults([]);
-      setShowDropdown(false);
-      setError('');
-      return;
-    }
-
-    // Check if this is a duplicate search (same query and location)
-    const locationKey = location ? `${location.lat},${location.lng}` : 'no-location';
-    const currentSearchKey = `${searchQuery}-${locationKey}`;
-    const lastSearchKey = `${lastSearchQueryRef.current}-${lastLocationRef.current}`;
-    
-    if (currentSearchKey === lastSearchKey) {
-      console.log('🔄 Skipping duplicate search:', searchQuery);
-      return;
-    }
-
-    // Set up debounced search
-    searchTimeoutRef.current = setTimeout(() => {
-      console.log('🔍 Triggering search for:', searchQuery);
-      lastSearchQueryRef.current = searchQuery;
-      lastLocationRef.current = locationKey;
-      searchPlaces();
-    }, 800); // Increased delay to 800ms to reduce API calls
-
-    // Cleanup function
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
-  }, [searchQuery, location]);
+  ];
 
   // Memoize location to prevent unnecessary re-renders
   const memoizedLocation = useMemo(() => {
@@ -70,6 +85,229 @@ const ModernPlaceSearch = ({
     }
     return { lat: location.lat, lng: location.lng };
   }, [location?.lat, location?.lng]);
+
+  // Category search logic
+  const handleCategoryClick = useCallback(async (category) => {
+    if (!memoizedLocation) {
+      setError('Location required for category search');
+      return;
+    }
+
+    setSelectedCategory(category);
+    setLoading(true);
+    setError('');
+    setShowCategoryFilter(false);
+
+    try {
+      console.log(`🔍 Searching for ${category.name} near location`);
+      
+      // Check Google Maps availability
+      if (!window.google?.maps?.places) {
+        throw new Error('Google Maps Places API not loaded');
+      }
+
+      const service = new window.google.maps.places.PlacesService(
+        document.createElement('div')
+      );
+
+      // Use primary Google type for the search
+      const primaryType = category.googleTypes[0];
+      
+      const request = {
+        location: new window.google.maps.LatLng(memoizedLocation.lat, memoizedLocation.lng),
+        radius: 5000, // 5km radius
+        type: primaryType,
+        keyword: category.name.toLowerCase()
+      };
+
+      // Perform nearby search
+      service.nearbySearch(request, (results, status) => {
+        if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
+          const formattedResults = results.slice(0, 20).map(place => {
+            try {
+              return formatPlaceForCategory(place);
+            } catch (formatError) {
+              console.error('Error formatting place:', formatError);
+              return null;
+            }
+          }).filter(Boolean);
+          
+          console.log(`✅ Found ${formattedResults.length} ${category.name}`);
+          setSearchResults(formattedResults);
+          
+          // Notify parent component about category search results
+          if (onCategorySearch) {
+            onCategorySearch(formattedResults, category.id);
+          }
+          
+          setShowDropdown(true);
+        } else if (status === window.google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
+          setSearchResults([]);
+          setShowDropdown(true);
+          setError(`No ${category.name.toLowerCase()} found in this area`);
+        } else {
+          console.error(`❌ Category search failed: ${status}`);
+          setError(`Failed to search for ${category.name.toLowerCase()}`);
+        }
+        setLoading(false);
+      });
+
+    } catch (err) {
+      console.error('Category search error:', err);
+      setError(`Category search failed: ${err.message}`);
+      setLoading(false);
+    }
+  }, [memoizedLocation, onCategorySearch]);
+
+  // Format place data specifically for category searches
+  const formatPlaceForCategory = useCallback((place) => {
+    return {
+      id: place.place_id,
+      name: place.name,
+      address: place.vicinity || place.formatted_address,
+      rating: place.rating || 0,
+      userRatingsTotal: place.user_ratings_total || 0,
+      types: place.types || [],
+      location: {
+        lat: place.geometry.location.lat(),
+        lng: place.geometry.location.lng()
+      },
+      photos: place.photos ? place.photos.slice(0, 1).map(photo => ({
+        url: photo.getUrl({ maxWidth: 200, maxHeight: 150 })
+      })) : [],
+      priceLevel: place.price_level,
+      phone: place.formatted_phone_number,
+      website: place.website,
+      openingHours: place.opening_hours?.isOpen?.() || null
+    };
+  }, []);
+
+  // Enhanced debounced search with category detection
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (searchQuery.length <= 2) {
+      setSearchResults([]);
+      setShowDropdown(false);
+      setError('');
+      setSelectedCategory(null);
+      return;
+    }
+
+    // Auto-detect category from search query
+    const detectedCategory = detectCategoryFromQuery(searchQuery);
+    if (detectedCategory && detectedCategory !== selectedCategory) {
+      setSelectedCategory(detectedCategory);
+    }
+
+    const locationKey = memoizedLocation ? `${memoizedLocation.lat},${memoizedLocation.lng}` : 'no-location';
+    const currentSearchKey = `${searchQuery}-${locationKey}`;
+    const lastSearchKey = `${lastSearchQueryRef.current}-${lastLocationRef.current}`;
+    
+    if (currentSearchKey === lastSearchKey) {
+      return;
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      lastSearchQueryRef.current = searchQuery;
+      lastLocationRef.current = locationKey;
+      
+      if (detectedCategory) {
+        // If category detected, do category search
+        handleCategoryClick(detectedCategory);
+      } else {
+        // Otherwise do regular search
+        searchPlaces();
+      }
+    }, 500);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery, memoizedLocation, selectedCategory, handleCategoryClick]);
+
+  // Detect category from search query
+  const detectCategoryFromQuery = useCallback((query) => {
+    const lowerQuery = query.toLowerCase();
+    
+    for (const category of categoryDefinitions) {
+      if (category.keywords.some(keyword => lowerQuery.includes(keyword))) {
+        return category;
+      }
+    }
+    return null;
+  }, []);
+
+  // Regular place search (for non-category searches)
+  const searchPlaces = useCallback(async () => {
+    if (!searchQuery || searchQuery.length <= 2 || !memoizedLocation) {
+      return;
+    }
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
+    setLoading(true);
+    setError('');
+
+    try {
+      if (!window.google?.maps?.places) {
+        throw new Error('Google Maps Places API not loaded');
+      }
+
+      const service = new window.google.maps.places.PlacesService(
+        document.createElement('div')
+      );
+
+      const request = {
+        location: new window.google.maps.LatLng(memoizedLocation.lat, memoizedLocation.lng),
+        radius: 10000,
+        keyword: searchQuery,
+        type: ['establishment']
+      };
+
+      service.nearbySearch(request, (results, status) => {
+        if (abortControllerRef.current?.signal.aborted) return;
+
+        if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
+          const formattedResults = results.slice(0, 8).map(place => {
+            try {
+              return formatPlaceForCategory(place);
+            } catch (formatError) {
+              console.error('Error formatting place:', formatError);
+              return null;
+            }
+          }).filter(Boolean);
+          
+          setSearchResults(formattedResults);
+          setShowDropdown(true);
+          
+          if (formattedResults.length === 0) {
+            setError(`No places found for "${searchQuery}"`);
+          }
+        } else if (status === window.google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
+          setSearchResults([]);
+          setShowDropdown(true);
+          setError(`No results found for "${searchQuery}"`);
+        } else {
+          setError(`Search failed: ${status}`);
+        }
+        setLoading(false);
+      });
+
+    } catch (err) {
+      if (!abortControllerRef.current?.signal.aborted) {
+        setError(`Search error: ${err.message}`);
+        setLoading(false);
+      }
+    }
+  }, [searchQuery, memoizedLocation, formatPlaceForCategory]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -80,299 +318,17 @@ const ModernPlaceSearch = ({
         !searchRef.current?.contains(event.target)
       ) {
         setShowDropdown(false);
+        setShowCategoryFilter(false);
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
-      // Cancel any ongoing search when component unmounts
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
     };
-  }, []);
-
-  const searchPlaces = useCallback(async () => {
-    console.log('🔍 Starting Places API search for:', searchQuery);
-    
-    // Validate inputs
-    if (!searchQuery || searchQuery.length <= 2) {
-      console.log('❌ Search query too short, skipping');
-      return;
-    }
-
-    if (!memoizedLocation) {
-      console.log('❌ No valid location provided, skipping');
-      setError('Location required for search');
-      return;
-    }
-
-    // Cancel previous search if still running
-    if (abortControllerRef.current) {
-      console.log('⏹️ Cancelling previous search');
-      abortControllerRef.current.abort();
-    }
-
-    // Create new abort controller for this search
-    abortControllerRef.current = new AbortController();
-    
-    setLoading(true);
-    setError('');
-
-    try {
-      // Check Google Maps availability
-      if (!window.google?.maps?.places) {
-        throw new Error('Google Maps Places API not loaded');
-      }
-
-      console.log('✅ Places API available, starting searches...');
-
-      // Create services once
-      const textSearchService = new window.google.maps.places.PlacesService(
-        document.createElement('div')
-      );
-      const nearbySearchService = new window.google.maps.places.PlacesService(
-        document.createElement('div')
-      );
-
-      // Execute searches with timeout and abort control
-      const searchPromises = [];
-
-      // 1. Text search with timeout
-      searchPromises.push(
-        Promise.race([
-          performTextSearchOptimized(textSearchService, searchQuery, memoizedLocation),
-          createTimeoutPromise(8000, 'Text search timeout') // Reduced timeout
-        ])
-      );
-
-      // 2. Nearby search with timeout
-      searchPromises.push(
-        Promise.race([
-          performNearbySearchOptimized(nearbySearchService, searchQuery, memoizedLocation),
-          createTimeoutPromise(8000, 'Nearby search timeout') // Reduced timeout
-        ])
-      );
-
-      console.log('📡 Executing parallel searches...');
-      
-      // Wait for all searches with abort support
-      const results = await Promise.allSettled(searchPromises);
-      
-      // Check if search was aborted
-      if (abortControllerRef.current?.signal.aborted) {
-        console.log('⏹️ Search was aborted');
-        return;
-      }
-
-      console.log('📊 Search results received:', results);
-
-      // Process and combine results
-      let allResults = [];
-      results.forEach((result, index) => {
-        if (result.status === 'fulfilled' && result.value) {
-          console.log(`✅ Search ${index + 1} success:`, result.value.length, 'places');
-          allResults = allResults.concat(result.value);
-        } else if (result.status === 'rejected') {
-          console.warn(`❌ Search ${index + 1} failed:`, result.reason);
-        }
-      });
-
-      // Remove duplicates and limit results
-      const uniqueResults = removeDuplicates(allResults);
-      const limitedResults = uniqueResults.slice(0, 8); // Limit to 8 results
-
-      console.log('✅ Final optimized results:', limitedResults.length, 'unique places');
-      
-      setSearchResults(limitedResults);
-      setShowDropdown(true);
-
-      if (limitedResults.length === 0) {
-        setError(`No places found near this location. Try different search terms.`);
-      }
-
-    } catch (err) {
-      // Don't show error if search was aborted
-      if (!abortControllerRef.current?.signal.aborted) {
-        console.error('❌ Search error:', err);
-        setError(`Search error: ${err.message}`);
-      }
-    } finally {
-      if (!abortControllerRef.current?.signal.aborted) {
-        setLoading(false);
-      }
-    }
-  }, [searchQuery, memoizedLocation]);
-
-  // Optimized text search with early return and caching
-  const performTextSearchOptimized = useCallback((service, query, location) => {
-    return new Promise((resolve, reject) => {
-      if (abortControllerRef.current?.signal.aborted) {
-        resolve([]);
-        return;
-      }
-
-      console.log('📝 Optimized text search for:', query);
-      
-      const request = {
-        query: `${query} near ${location.lat},${location.lng}`,
-        location: new window.google.maps.LatLng(location.lat, location.lng),
-        radius: 10000, // Reduced radius for more relevant results
-        fields: ['place_id', 'name', 'formatted_address', 'geometry', 'rating', 'user_ratings_total', 'types'] // Only request needed fields
-      };
-
-      service.textSearch(request, (results, status) => {
-        if (abortControllerRef.current?.signal.aborted) {
-          resolve([]);
-          return;
-        }
-
-        console.log('📝 Text search response - Status:', status, 'Results:', results?.length || 0);
-        
-        if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
-          const formattedResults = results.slice(0, 5).map(place => { // Limit to 5 per search
-            try {
-              return formatPlaceOptimized(place);
-            } catch (formatError) {
-              console.error('Error formatting place:', formatError);
-              return null;
-            }
-          }).filter(Boolean);
-          
-          resolve(formattedResults);
-        } else if (status === window.google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
-          resolve([]);
-        } else {
-          console.warn('❌ Text search failed - Status:', status);
-          resolve([]);
-        }
-      });
-    });
-  }, []);
-
-  // Optimized nearby search
-  const performNearbySearchOptimized = useCallback((service, query, location) => {
-    return new Promise((resolve, reject) => {
-      if (abortControllerRef.current?.signal.aborted) {
-        resolve([]);
-        return;
-      }
-
-      console.log('📍 Optimized nearby search for:', query);
-      
-      const searchType = getSearchType(query);
-      const request = {
-        location: new window.google.maps.LatLng(location.lat, location.lng),
-        radius: 8000, // Reduced radius
-        keyword: query,
-        type: searchType ? [searchType] : undefined,
-        fields: ['place_id', 'name', 'vicinity', 'geometry', 'rating', 'user_ratings_total', 'types'] // Only needed fields
-      };
-
-      service.nearbySearch(request, (results, status) => {
-        if (abortControllerRef.current?.signal.aborted) {
-          resolve([]);
-          return;
-        }
-
-        console.log('📍 Nearby search response - Status:', status, 'Results:', results?.length || 0);
-        
-        if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
-          const formattedResults = results.slice(0, 5).map(place => { // Limit to 5 per search
-            try {
-              return formatPlaceOptimized(place);
-            } catch (formatError) {
-              console.error('Error formatting place:', formatError);
-              return null;
-            }
-          }).filter(Boolean);
-          
-          resolve(formattedResults);
-        } else if (status === window.google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
-          resolve([]);
-        } else {
-          console.warn('❌ Nearby search failed - Status:', status);
-          resolve([]);
-        }
-      });
-    });
-  }, []);
-
-  // Create timeout promise
-  const createTimeoutPromise = (ms, errorMessage) => {
-    return new Promise((_, reject) => {
-      setTimeout(() => reject(new Error(errorMessage)), ms);
-    });
-  };
-
-  // Optimized place formatting (only extract what we need)
-  const formatPlaceOptimized = useCallback((place) => {
-    return {
-      id: place.place_id,
-      name: place.name,
-      address: place.formatted_address || place.vicinity,
-      rating: place.rating || 0,
-      userRatingsTotal: place.user_ratings_total || 0,
-      types: place.types || [],
-      location: {
-        lat: place.geometry.location.lat(),
-        lng: place.geometry.location.lng()
-      },
-      // Skip photos and other heavy data unless specifically needed
-      photos: [], // Don't load photos initially to save API quota
-      priceLevel: place.price_level,
-      phone: place.formatted_phone_number,
-      website: place.website
-    };
-  }, []);
-
-  // Remove duplicates based on place_id
-  const removeDuplicates = useCallback((places) => {
-    const seen = new Set();
-    return places.filter(place => {
-      if (seen.has(place.id)) {
-        return false;
-      }
-      seen.add(place.id);
-      return true;
-    });
-  }, []);
-
-  // Determine search type based on query keywords
-  const getSearchType = useCallback((query) => {
-    const lowerQuery = query.toLowerCase();
-    
-    // Food & Dining
-    if (lowerQuery.includes('restaurant') || lowerQuery.includes('food') || 
-        lowerQuery.includes('cafe') || lowerQuery.includes('coffee') ||
-        lowerQuery.includes('bar') || lowerQuery.includes('pub') ||
-        lowerQuery.includes('dining') || lowerQuery.includes('eat')) {
-      return 'restaurant';
-    }
-    
-    // Accommodation
-    if (lowerQuery.includes('hotel') || lowerQuery.includes('accommodation') ||
-        lowerQuery.includes('stay') || lowerQuery.includes('lodge') ||
-        lowerQuery.includes('resort') || lowerQuery.includes('inn')) {
-      return 'lodging';
-    }
-    
-    // Shopping
-    if (lowerQuery.includes('shop') || lowerQuery.includes('mall') ||
-        lowerQuery.includes('store') || lowerQuery.includes('market') ||
-        lowerQuery.includes('shopping')) {
-      return 'shopping_mall';
-    }
-    
-    // Attractions
-    if (lowerQuery.includes('attraction') || lowerQuery.includes('tourist') ||
-        lowerQuery.includes('museum') || lowerQuery.includes('park') ||
-        lowerQuery.includes('temple') || lowerQuery.includes('monument')) {
-      return 'tourist_attraction';
-    }
-    
-    return null;
   }, []);
 
   const isFavorite = useCallback((placeId) => {
@@ -384,7 +340,6 @@ const ModernPlaceSearch = ({
   }, [onToggleFavorite]);
 
   const clearSearch = useCallback(() => {
-    // Cancel any ongoing search
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -393,9 +348,21 @@ const ModernPlaceSearch = ({
     setSearchResults([]);
     setShowDropdown(false);
     setError('');
+    setSelectedCategory(null);
     lastSearchQueryRef.current = '';
     lastLocationRef.current = null;
-  }, []);
+    
+    // Clear category search results from map
+    if (onCategorySearch) {
+      onCategorySearch([], null);
+    }
+  }, [onCategorySearch]);
+
+  const handlePlaceClick = useCallback((place) => {
+    if (onPlaceClick) {
+      onPlaceClick(place);
+    }
+  }, [onPlaceClick]);
 
   const renderStarIcon = useCallback((place) => {
     const isStarred = isFavorite(place.id);
@@ -459,7 +426,7 @@ const ModernPlaceSearch = ({
 
   return (
     <div className="relative">
-      {/* Search Input */}
+      {/* Search Input with Category Filter */}
       <div ref={searchRef} className="relative">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -468,31 +435,111 @@ const ModernPlaceSearch = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => searchQuery.length > 2 && setShowDropdown(true)}
-            placeholder="Search places by name or type (e.g., 'Marina Bay Sands' or 'restaurant')"
-            className="w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="Search places or try: hotel, restaurant, tourist attraction..."
+            className="w-full pl-10 pr-20 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
+          
+          {/* Category Filter Button */}
+          <button
+            onClick={() => setShowCategoryFilter(!showCategoryFilter)}
+            className={`absolute right-10 top-1/2 transform -translate-y-1/2 p-1 rounded ${
+              selectedCategory ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600'
+            }`}
+            title="Filter by category"
+          >
+            <Filter className="w-4 h-4" />
+          </button>
+          
           {searchQuery && (
             <button
               onClick={clearSearch}
               className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           )}
           {loading && (
-            <div className="absolute right-10 top-1/2 transform -translate-y-1/2">
+            <div className="absolute right-24 top-1/2 transform -translate-y-1/2">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
             </div>
           )}
         </div>
       </div>
 
+      {/* Category Filter Dropdown */}
+      {showCategoryFilter && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-50">
+          <div className="p-3">
+            <h4 className="font-medium text-gray-700 mb-3">Search by Category</h4>
+            <div className="grid grid-cols-2 gap-2">
+              {categoryDefinitions.map((category) => {
+                const Icon = category.icon;
+                const isSelected = selectedCategory?.id === category.id;
+                
+                return (
+                  <button
+                    key={category.id}
+                    onClick={() => handleCategoryClick(category)}
+                    className={`flex items-center gap-2 p-2 rounded-lg text-left transition-colors ${
+                      isSelected
+                        ? `bg-${category.color}-50 text-${category.color}-700 border border-${category.color}-200`
+                        : 'hover:bg-gray-50 border border-transparent'
+                    }`}
+                  >
+                    <Icon className={`w-4 h-4 ${isSelected ? `text-${category.color}-600` : 'text-gray-500'}`} />
+                    <span className="text-sm font-medium">{category.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+            
+            {selectedCategory && (
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <button
+                  onClick={() => {
+                    setSelectedCategory(null);
+                    setShowCategoryFilter(false);
+                    clearSearch();
+                  }}
+                  className="text-sm text-blue-600 hover:text-blue-700 underline"
+                >
+                  Clear category filter
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Search Results Dropdown */}
       {showDropdown && (
         <div 
           ref={dropdownRef}
-          className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto"
+          className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-40 max-h-96 overflow-y-auto"
         >
+          {/* Selected Category Header */}
+          {selectedCategory && (
+            <div className={`px-3 py-2 bg-${selectedCategory.color}-50 border-b border-gray-100`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <selectedCategory.icon className={`w-4 h-4 text-${selectedCategory.color}-600`} />
+                  <span className={`text-sm font-medium text-${selectedCategory.color}-800`}>
+                    {selectedCategory.name} near you
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedCategory(null);
+                    clearSearch();
+                  }}
+                  className={`p-1 text-${selectedCategory.color}-600 hover:text-${selectedCategory.color}-700 rounded`}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="p-3 text-red-600 text-sm border-b border-gray-100">
               {error}
@@ -503,12 +550,14 @@ const ModernPlaceSearch = ({
           {searchResults.length > 0 ? (
             <div>
               <div className="px-3 py-2 bg-gray-50 text-sm font-medium text-gray-700 border-b border-gray-100">
-                Found {searchResults.length} places for "{searchQuery}"
+                Found {searchResults.length} {selectedCategory ? selectedCategory.name.toLowerCase() : 'places'}
+                {searchQuery && !selectedCategory && ` for "${searchQuery}"`}
               </div>
               {searchResults.map(place => (
                 <div
                   key={place.id}
-                  className="flex items-start gap-3 p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                  onClick={() => handlePlaceClick(place)}
+                  className="flex items-start gap-3 p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 cursor-pointer"
                 >
                   {/* Place Icon */}
                   <div className="text-2xl flex-shrink-0 mt-1">
@@ -532,17 +581,33 @@ const ModernPlaceSearch = ({
                         {/* Star Button */}
                         {renderStarIcon(place)}
                         
-                        {/* NEW: Extra Actions (e.g., Add to Trip button) */}
+                        {/* Extra Actions */}
                         {renderExtraActions && renderExtraActions(place)}
                       </div>
                     </div>
                     
-                    {/* Rating and Type */}
+                    {/* Rating, Type, and Status */}
                     <div className="mt-2 flex items-center gap-3">
                       {renderRating(place.rating, place.userRatingsTotal)}
+                      
                       {place.types && place.types.length > 0 && (
-                        <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                        <span className={`text-xs px-2 py-1 rounded ${
+                          selectedCategory 
+                            ? `bg-${selectedCategory.color}-50 text-${selectedCategory.color}-600`
+                            : 'bg-blue-50 text-blue-600'
+                        }`}>
                           {place.types[0].replace(/_/g, ' ')}
+                        </span>
+                      )}
+                      
+                      {/* Opening Hours Status */}
+                      {place.openingHours !== null && (
+                        <span className={`text-xs px-2 py-1 rounded ${
+                          place.openingHours 
+                            ? 'bg-green-50 text-green-600' 
+                            : 'bg-red-50 text-red-600'
+                        }`}>
+                          {place.openingHours ? 'Open' : 'Closed'}
                         </span>
                       )}
                     </div>
@@ -552,12 +617,15 @@ const ModernPlaceSearch = ({
             </div>
           ) : searchQuery.length > 2 && !loading ? (
             <div className="p-4 text-center text-gray-500">
-              <div className="mb-2">No places found for "{searchQuery}"</div>
+              <div className="mb-2">
+                No {selectedCategory ? selectedCategory.name.toLowerCase() : 'places'} found
+                {searchQuery && !selectedCategory && ` for "${searchQuery}"`}
+              </div>
               <div className="text-xs text-gray-400 space-y-1">
-                <div>Try searching by:</div>
+                <div>Try searching for:</div>
+                <div>• Specific categories: "hotel", "restaurant", "tourist attraction"</div>
                 <div>• Specific names: "Marina Bay Sands", "Raffles Hotel"</div>
-                <div>• Place types: "restaurant", "cafe", "tourist attraction"</div>
-                <div>• General terms: "food", "shopping", "hotel"</div>
+                <div>• Or use the category filter above</div>
               </div>
             </div>
           ) : null}
