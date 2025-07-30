@@ -1,8 +1,13 @@
-// src/components/places/ModernPlaceSearch.jsx - OPTIMIZED VERSION to prevent redundant API calls
+// src/components/places/ModernPlaceSearch.jsx - Enhanced with extra actions support
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Search, Star, MapPin, X } from 'lucide-react';
 
-const ModernPlaceSearch = ({ location, favorites = [], onToggleFavorite }) => {
+const ModernPlaceSearch = ({ 
+  location, 
+  favorites = [], 
+  onToggleFavorite,
+  renderExtraActions // NEW: Function to render additional action buttons
+}) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -522,9 +527,13 @@ const ModernPlaceSearch = ({ location, favorites = [], onToggleFavorite }) => {
                         </p>
                       </div>
                       
-                      {/* Star Button */}
-                      <div className="ml-2 flex-shrink-0">
+                      {/* Action Buttons Container */}
+                      <div className="ml-2 flex-shrink-0 flex items-center gap-1">
+                        {/* Star Button */}
                         {renderStarIcon(place)}
+                        
+                        {/* NEW: Extra Actions (e.g., Add to Trip button) */}
+                        {renderExtraActions && renderExtraActions(place)}
                       </div>
                     </div>
                     

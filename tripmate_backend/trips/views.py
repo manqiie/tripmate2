@@ -1,14 +1,15 @@
-# trips/views.py - Updated with checklist endpoints
+# trips/views.py - Updated with checklist endpoints and TripPlaces
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from django.db.models import Q, Sum, Count
 from django.core.files.storage import default_storage
-from .models import Trip, TripMedia
+from .models import Trip, TripMedia, TripPlaces
 from .serializers import (
     TripSerializer, TripCreateSerializer, TripListSerializer,
     TripMediaSerializer, TripMediaCreateSerializer, TripTimelineSerializer,
-    ChecklistUpdateSerializer
+    ChecklistUpdateSerializer, TripPlacesSerializer, TripPlacesCreateSerializer, 
+    TripPlacesUpdateSerializer, TripDetailSerializer
 )
 from .checklist_service import ChecklistService
 
@@ -39,12 +40,13 @@ class TripListCreateView(generics.ListCreateAPIView):
         
         return queryset.order_by('-created_at')
 
+# Updated to use TripDetailSerializer for enhanced functionality
 class TripDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = TripSerializer
+    serializer_class = TripDetailSerializer  # Changed from TripSerializer
     
     def get_queryset(self):
-        return Trip.objects.filter(user=self.request.user)
+        return Trip.objects.filter(user=self.request.user).prefetch_related('saved_places')
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
@@ -107,7 +109,176 @@ def trip_stats(request):
             'recent_trips': []
         })
 
-# NEW: Checklist endpoints
+# NEW: Trip Places endpoints
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.IsAuthenticated])
+def trip_places(request, trip_id):
+    """Get or create places for a trip"""
+    try:
+        trip = Trip.objects.get(id=trip_id, user=request.user)
+    except Trip.DoesNotExist:
+        return Response({'error': 'Trip not found'}, status=404)
+    
+    if request.method == 'GET':
+        # Get places for specific stop or all places
+        stop_index = request.query_params.get('stop_index')
+        places_queryset = trip.saved_places.all()
+        
+        if stop_index is not None:
+            places_queryset = places_queryset.filter(stop_index=int(stop_index))
+        
+        serializer = TripPlacesSerializer(places_queryset, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        serializer = TripPlacesCreateSerializer(
+            data=request.data, 
+            context={'trip': trip}
+        )
+        if serializer.is_valid():
+            try:
+                place = serializer.save()
+                response_serializer = TripPlacesSerializer(place)
+                return Response(response_serializer.data, status=201)
+            except Exception as e:
+                # Handle duplicate place_id for same trip
+                if 'unique_trip_place' in str(e):
+                    return Response({
+                        'error': 'This place is already saved to your trip',
+                        'code': 'DUPLICATE_PLACE'
+                    }, status=400)
+                return Response({'error': str(e)}, status=400)
+        return Response(serializer.errors, status=400)
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def trip_place_detail(request, trip_id, place_id):
+    """Get, update, or delete a specific saved place"""
+    try:
+        trip = Trip.objects.get(id=trip_id, user=request.user)
+        place = trip.saved_places.get(id=place_id)
+    except (Trip.DoesNotExist, TripPlaces.DoesNotExist):
+        return Response({'error': 'Place not found'}, status=404)
+    
+    if request.method == 'GET':
+        serializer = TripPlacesSerializer(place)
+        return Response(serializer.data)
+    
+    elif request.method == 'PUT':
+        serializer = TripPlacesUpdateSerializer(place, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            response_serializer = TripPlacesSerializer(place)
+            return Response(response_serializer.data)
+        return Response(serializer.errors, status=400)
+    
+    elif request.method == 'DELETE':
+        place.delete()
+        return Response({'message': 'Place removed from trip successfully'})
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def bulk_save_places(request, trip_id):
+    """Save multiple places to a trip at once"""
+    try:
+        trip = Trip.objects.get(id=trip_id, user=request.user)
+    except Trip.DoesNotExist:
+        return Response({'error': 'Trip not found'}, status=404)
+    
+    places_data = request.data.get('places', [])
+    if not places_data:
+        return Response({'error': 'No places provided'}, status=400)
+    
+    created_places = []
+    errors = []
+    
+    for place_data in places_data:
+        serializer = TripPlacesCreateSerializer(
+            data=place_data,
+            context={'trip': trip}
+        )
+        if serializer.is_valid():
+            try:
+                place = serializer.save()
+                created_places.append(TripPlacesSerializer(place).data)
+            except Exception as e:
+                if 'unique_trip_place' in str(e):
+                    errors.append({
+                        'place_name': place_data.get('name', 'Unknown'),
+                        'error': 'Already saved to trip'
+                    })
+                else:
+                    errors.append({
+                        'place_name': place_data.get('name', 'Unknown'),
+                        'error': str(e)
+                    })
+        else:
+            errors.append({
+                'place_name': place_data.get('name', 'Unknown'),
+                'error': serializer.errors
+            })
+    
+    return Response({
+        'created_places': created_places,
+        'errors': errors,
+        'summary': {
+            'created': len(created_places),
+            'failed': len(errors)
+        }
+    })
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def trip_places_map_data(request, trip_id):
+    """Get places data optimized for map display"""
+    try:
+        trip = Trip.objects.get(id=trip_id, user=request.user)
+    except Trip.DoesNotExist:
+        return Response({'error': 'Trip not found'}, status=404)
+    
+    places = trip.saved_places.all()
+    
+    # Format data for map markers
+    map_places = []
+    for place in places:
+        map_places.append({
+            'id': place.id,
+            'place_id': place.place_id,
+            'name': place.name,
+            'address': place.address,
+            'location': {
+                'lat': place.latitude,
+                'lng': place.longitude
+            },
+            'rating': place.rating,
+            'types': place.types,
+            'stop_index': place.stop_index,
+            'stop_name': place.stop_name,
+            'is_visited': place.is_visited,
+            'user_rating': place.user_rating,
+            'user_notes': place.user_notes
+        })
+    
+    return Response({
+        'trip': {
+            'id': trip.id,
+            'title': trip.title
+        },
+        'places': map_places,
+        'places_by_stop': _group_places_by_stop(map_places)
+    })
+
+def _group_places_by_stop(places):
+    """Helper function to group places by stop"""
+    grouped = {}
+    for place in places:
+        stop_index = place['stop_index']
+        if stop_index not in grouped:
+            grouped[stop_index] = []
+        grouped[stop_index].append(place)
+    return grouped
+
+# Checklist endpoints
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def checklist_templates(request):

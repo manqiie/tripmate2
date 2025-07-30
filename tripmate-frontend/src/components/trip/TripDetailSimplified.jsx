@@ -1,9 +1,9 @@
-// src/components/trip/TripDetailSimplified.jsx - Updated with checklist tab
+// src/components/trip/TripDetailSimplified.jsx - Enhanced with place saving
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, MapPin, Calendar, Users, Clock, Route, ChevronDown, ChevronUp, 
-  Star, Search, CheckSquare, Camera, Map, List 
+  Star, Search, CheckSquare, Camera, Map, List, Plus, Check 
 } from 'lucide-react';
 import GoogleMap from '../maps/GoogleMap';
 import ModernPlaceSearch from '../places/ModernPlaceSearch';
@@ -39,6 +39,10 @@ const TripDetailSimplified = () => {
   
   // Favorites state (per stop)
   const [favoritesByStop, setFavoritesByStop] = useState({});
+  
+  // NEW: Trip places state
+  const [savedTripPlaces, setSavedTripPlaces] = useState([]);
+  const [tripPlacesByStop, setTripPlacesByStop] = useState({});
 
   useEffect(() => {
     if (authLoading) return;
@@ -48,7 +52,52 @@ const TripDetailSimplified = () => {
     }
     fetchTripDetail();
     loadAllFavorites();
+    fetchSavedTripPlaces(); // NEW: Load saved places
   }, [id, user, authLoading]);
+
+  // NEW: Fetch saved trip places
+  const fetchSavedTripPlaces = async () => {
+    try {
+      const response = await api.get(`/trips/${id}/places/`);
+      setSavedTripPlaces(response.data);
+      
+      // Group by stop
+      const byStop = {};
+      response.data.forEach(place => {
+        if (!byStop[place.stop_index]) {
+          byStop[place.stop_index] = [];
+        }
+        byStop[place.stop_index].push(place);
+      });
+      setTripPlacesByStop(byStop);
+    } catch (error) {
+      console.error('Failed to fetch saved trip places:', error);
+    }
+  };
+
+  // NEW: Save place to trip
+  const handleSavePlaceToTrip = async (placeData) => {
+    try {
+      const response = await api.post(`/trips/${id}/places/`, placeData);
+      
+      // Update local state
+      const newPlace = response.data;
+      setSavedTripPlaces(prev => [...prev, newPlace]);
+      
+      setTripPlacesByStop(prev => ({
+        ...prev,
+        [newPlace.stop_index]: [...(prev[newPlace.stop_index] || []), newPlace]
+      }));
+      
+      alert(`✅ ${newPlace.name} saved to your trip!`);
+    } catch (error) {
+      if (error.response?.data?.code === 'DUPLICATE_PLACE') {
+        alert('This place is already saved to your trip.');
+      } else {
+        throw error; // Re-throw to be handled by caller
+      }
+    }
+  };
 
   // Load favorites for all stops
   const loadAllFavorites = () => {
@@ -259,9 +308,45 @@ const TripDetailSimplified = () => {
     saveFavoritesForStop(stopIndex, newFavorites);
   };
 
+  // NEW: Handle place click on map
+  const handlePlaceClick = (place) => {
+    console.log('Place clicked on map:', place);
+    // You can show additional info or navigate to the place
+  };
+
   const getMapConfig = () => {
+    // Combine bookmarked places and saved trip places for map display
+    const allBookmarkedPlaces = [];
+    
+    // Add saved trip places as bookmarks
+    savedTripPlaces.forEach(place => {
+      allBookmarkedPlaces.push({
+        id: place.place_id,
+        name: place.name,
+        address: place.address,
+        location: {
+          lat: place.latitude,
+          lng: place.longitude
+        },
+        rating: place.rating,
+        types: place.types,
+        phone: place.phone,
+        website: place.website,
+        userRatingsTotal: place.user_ratings_total,
+        stopIndex: place.stop_index,
+        isVisited: place.is_visited,
+        userNotes: place.user_notes
+      });
+    });
+
     if (mapMode === 'stop' && stopCoordinates && stopCoordinates[selectedStop]) {
       const stopCoord = stopCoordinates[selectedStop];
+      
+      // Filter bookmarks for current stop
+      const currentStopPlaces = allBookmarkedPlaces.filter(
+        place => place.stopIndex === selectedStop
+      );
+      
       return {
         center: { lat: stopCoord.lat, lng: stopCoord.lng },
         zoom: 14,
@@ -270,7 +355,9 @@ const TripDetailSimplified = () => {
         markers: [{
           position: { lat: stopCoord.lat, lng: stopCoord.lng },
           title: stopCoord.formatted_address || stops[selectedStop]?.name || 'Stop Location'
-        }]
+        }],
+        bookmarkedPlaces: currentStopPlaces,
+        showBookmarks: true
       };
     } else {
       return {
@@ -278,7 +365,9 @@ const TripDetailSimplified = () => {
         zoom: 10,
         route: route,
         routeInfo: routeInfo,
-        markers: []
+        markers: [],
+        bookmarkedPlaces: allBookmarkedPlaces,
+        showBookmarks: true
       };
     }
   };
@@ -319,6 +408,69 @@ const TripDetailSimplified = () => {
 
   const handleTripUpdate = (updatedTrip) => {
     setTrip(updatedTrip);
+  };
+
+  // NEW: Enhanced place search component with trip saving
+  const EnhancedPlaceSearchWithTrip = ({ 
+    location, 
+    favorites, 
+    onToggleFavorite, 
+    stopIndex,
+    savedTripPlaces 
+  }) => {
+    return (
+      <ModernPlaceSearch
+        location={location}
+        favorites={favorites}
+        onToggleFavorite={onToggleFavorite}
+        renderExtraActions={(place) => {
+          const isAlreadySaved = savedTripPlaces.some(
+            saved => saved.place_id === place.id
+          );
+          
+          return (
+            <div className="ml-2">
+              {isAlreadySaved ? (
+                <button
+                  disabled
+                  className="flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-lg text-sm cursor-not-allowed"
+                  title="Already saved to trip"
+                >
+                  <Check className="w-3 h-3" />
+                  Saved
+                </button>
+              ) : (
+                <button
+                  onClick={async () => {
+                    try {
+                      await handleSavePlaceToTrip({
+                        place_id: place.id,
+                        name: place.name,
+                        address: place.address,
+                        rating: place.rating,
+                        user_ratings_total: place.userRatingsTotal,
+                        types: place.types,
+                        location: place.location,
+                        phone: place.phone,
+                        website: place.website,
+                        stop_index: stopIndex
+                      });
+                    } catch (error) {
+                      console.error('Failed to save place:', error);
+                    }
+                  }}
+                  className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors"
+                  title="Save to trip"
+                >
+                  <Plus className="w-3 h-3" />
+                  Add to Trip
+                </button>
+              )}
+            </div>
+          );
+        }}
+      />
+    );
   };
 
   if (authLoading || loading) {
@@ -377,7 +529,7 @@ const TripDetailSimplified = () => {
 
         <h1 className="text-3xl font-bold text-gray-900 mb-2">{trip.title}</h1>
         
-        {/* Trip Type Badge */}
+        {/* Trip Type Badge and Stats */}
         <div className="flex items-center gap-2 mb-6">
           {trip.trip_type_display && (
             <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">
@@ -387,6 +539,12 @@ const TripDetailSimplified = () => {
           {trip.checklist_progress !== undefined && (
             <span className="inline-block px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">
               {trip.checklist_progress}% Complete
+            </span>
+          )}
+          {/* NEW: Saved places count */}
+          {savedTripPlaces.length > 0 && (
+            <span className="inline-block px-3 py-1 bg-yellow-100 text-yellow-800 text-sm font-medium rounded-full">
+              {savedTripPlaces.length} Places Saved
             </span>
           )}
         </div>
@@ -471,7 +629,13 @@ const TripDetailSimplified = () => {
               }`}
             >
               <Map className="w-4 h-4" />
-              Route & Map
+              Route & Places
+              {/* NEW: Show places count */}
+              {savedTripPlaces.length > 0 && (
+                <span className="ml-1 px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full">
+                  {savedTripPlaces.length}
+                </span>
+              )}
             </button>
             
             <button
@@ -542,6 +706,7 @@ const TripDetailSimplified = () => {
                     const stopKey = `${id}_${index}`;
                     const stopFavorites = favoritesByStop[stopKey] || [];
                     const currentLocation = stopCoordinates[index];
+                    const stopSavedPlaces = tripPlacesByStop[index] || [];
                     
                     return (
                       <div
@@ -571,17 +736,26 @@ const TripDetailSimplified = () => {
                               <h3 className="font-semibold text-gray-900 mb-1">{stop.name}</h3>
                               <p className="text-sm text-gray-600 mb-2">{stop.description}</p>
                               
-                              {/* Favorites count */}
-                              {stopFavorites.length > 0 && (
-                                <div className="flex items-center gap-1 text-xs text-blue-600 mb-2">
-                                  <Star className="w-3 h-3 fill-current" />
-                                  <span>{stopFavorites.length} saved place{stopFavorites.length !== 1 ? 's' : ''}</span>
-                                </div>
-                              )}
+                              {/* Show counts */}
+                              <div className="flex items-center gap-3 text-xs mb-2">
+                                {stopFavorites.length > 0 && (
+                                  <div className="flex items-center gap-1 text-blue-600">
+                                    <Star className="w-3 h-3 fill-current" />
+                                    <span>{stopFavorites.length} favorite{stopFavorites.length !== 1 ? 's' : ''}</span>
+                                  </div>
+                                )}
+                                {/* NEW: Show saved places count */}
+                                {stopSavedPlaces.length > 0 && (
+                                  <div className="flex items-center gap-1 text-green-600">
+                                    <MapPin className="w-3 h-3" />
+                                    <span>{stopSavedPlaces.length} saved place{stopSavedPlaces.length !== 1 ? 's' : ''}</span>
+                                  </div>
+                                )}
+                              </div>
                               
                               {/* Click hints */}
                               <div className="text-xs text-blue-600">
-                                💡 Click to view on map
+                                💡 Click to view on map and explore nearby places
                               </div>
                             </div>
 
@@ -611,12 +785,50 @@ const TripDetailSimplified = () => {
                                 Explore {stop.name}
                               </h4>
                               
-                              {/* Places Search */}
-                              <ModernPlaceSearch
+                              {/* Enhanced Places Search with Trip Saving */}
+                              <EnhancedPlaceSearchWithTrip
                                 location={currentLocation}
                                 favorites={stopFavorites}
                                 onToggleFavorite={(place) => handleToggleFavorite(index, place)}
+                                stopIndex={index}
+                                savedTripPlaces={stopSavedPlaces}
                               />
+                              
+                              {/* NEW: Show saved places for this stop */}
+                              {stopSavedPlaces.length > 0 && (
+                                <div className="mt-4">
+                                  <h5 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
+                                    <MapPin className="w-4 h-4 text-green-600" />
+                                    Saved Places ({stopSavedPlaces.length})
+                                  </h5>
+                                  <div className="space-y-2">
+                                    {stopSavedPlaces.map(place => (
+                                      <div key={place.id} className="bg-white rounded-lg p-3 border border-green-200">
+                                        <div className="flex items-start justify-between">
+                                          <div className="flex-1">
+                                            <h6 className="font-medium text-gray-900">{place.name}</h6>
+                                            <p className="text-sm text-gray-600">{place.address}</p>
+                                            {place.rating && (
+                                              <div className="flex items-center gap-1 text-sm mt-1">
+                                                <Star className="w-3 h-3 text-yellow-500 fill-current" />
+                                                <span>{place.rating.toFixed(1)}</span>
+                                                {place.user_ratings_total && (
+                                                  <span className="text-gray-500">({place.user_ratings_total})</span>
+                                                )}
+                                              </div>
+                                            )}
+                                          </div>
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                                              Saved
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                               
                               {/* Favorites for this stop */}
                               {stopFavorites.length > 0 && (
@@ -637,7 +849,7 @@ const TripDetailSimplified = () => {
                 </div>
               </div>
 
-              {/* Right Side - Map */}
+              {/* Right Side - Enhanced Map with Bookmarks */}
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-bold text-gray-900">Route Map</h2>
@@ -666,6 +878,9 @@ const TripDetailSimplified = () => {
                     route={mapConfig.route}
                     routeInfo={mapConfig.routeInfo}
                     markers={mapConfig.markers}
+                    bookmarkedPlaces={mapConfig.bookmarkedPlaces}
+                    showBookmarks={mapConfig.showBookmarks}
+                    onPlaceClick={handlePlaceClick}
                     className="w-full h-[500px] rounded-lg"
                   />
                 </div>
@@ -708,6 +923,10 @@ const TripDetailSimplified = () => {
               )}
               {trip.trip_type_display && (
                 <p><span className="font-medium">Trip Type:</span> {trip.trip_type_display}</p>
+              )}
+              {/* NEW: Saved places summary */}
+              {savedTripPlaces.length > 0 && (
+                <p><span className="font-medium">Saved Places:</span> {savedTripPlaces.length} locations</p>
               )}
             </div>
           </div>

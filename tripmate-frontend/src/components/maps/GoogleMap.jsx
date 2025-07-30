@@ -1,4 +1,4 @@
-// src/components/maps/GoogleMap.jsx - FIXED VERSION to prevent multiple API loads
+// src/components/maps/GoogleMap.jsx - Enhanced with bookmark display and place selection
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import googleMapsService from '../../services/googleMaps';
 
@@ -8,7 +8,10 @@ const GoogleMap = ({
   route = null,
   routeInfo = null,
   markers = [],
+  bookmarkedPlaces = [], // NEW: Bookmarked places to show
   onMapClick = null,
+  onPlaceClick = null, // NEW: Callback when a place is clicked
+  showBookmarks = true, // NEW: Toggle bookmark visibility
   className = "w-full h-96"
 }) => {
   const mapRef = useRef(null);
@@ -16,6 +19,7 @@ const GoogleMap = ({
   const directionsRendererRef = useRef(null);
   const flightPathRef = useRef([]);
   const markersRef = useRef([]);
+  const bookmarkMarkersRef = useRef([]); // NEW: Bookmark markers
   
   const [isLoaded, setIsLoaded] = useState(false);
   const [apiLoaded, setApiLoaded] = useState(false);
@@ -29,6 +33,11 @@ const GoogleMap = ({
     routeInfo?.isFlightRoute,
     routeInfo?.routeType,
     JSON.stringify(routeInfo?.coordinates)
+  ]);
+
+  // Memoize bookmarked places to prevent unnecessary re-renders
+  const memoizedBookmarkedPlaces = useMemo(() => bookmarkedPlaces, [
+    JSON.stringify(bookmarkedPlaces?.map(p => ({ id: p.id, location: p.location })))
   ]);
 
   // Load Google Maps API only once
@@ -154,6 +163,125 @@ const GoogleMap = ({
 
   }, [markers, isLoaded]);
 
+  // NEW: Handle bookmark markers
+  useEffect(() => {
+    if (!isLoaded || !mapInstanceRef.current || !showBookmarks) {
+      clearBookmarkMarkers();
+      return;
+    }
+
+    console.log('⭐ GoogleMap: Updating bookmark markers...');
+    
+    // Clear existing bookmark markers
+    clearBookmarkMarkers();
+
+    // Add bookmark markers
+    memoizedBookmarkedPlaces.forEach(place => {
+      if (place.location && place.location.lat && place.location.lng) {
+        const bookmarkIcon = {
+          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="12" fill="white" stroke="#fbbf24" stroke-width="2"/>
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="#fbbf24" stroke="#f59e0b" stroke-width="1"/>
+            </svg>
+          `),
+          scaledSize: new window.google.maps.Size(32, 32),
+          anchor: new window.google.maps.Point(16, 16)
+        };
+
+        const marker = new window.google.maps.Marker({
+          position: place.location,
+          map: mapInstanceRef.current,
+          title: place.name,
+          icon: bookmarkIcon,
+          zIndex: 1000 // Higher z-index to appear above other markers
+        });
+
+        // Create info window for bookmark
+        const infoWindow = new window.google.maps.InfoWindow({
+          content: createBookmarkInfoWindowContent(place)
+        });
+
+        // Add click listener to show info window and trigger callback
+        marker.addListener('click', () => {
+          // Close any open info windows
+          bookmarkMarkersRef.current.forEach(({ infoWindow: iw }) => {
+            if (iw) iw.close();
+          });
+          
+          // Open this info window
+          infoWindow.open(mapInstanceRef.current, marker);
+          
+          // Trigger callback if provided
+          if (onPlaceClick) {
+            onPlaceClick(place);
+          }
+        });
+
+        bookmarkMarkersRef.current.push({ marker, infoWindow, place });
+      }
+    });
+
+  }, [memoizedBookmarkedPlaces, isLoaded, showBookmarks, onPlaceClick]);
+
+  // NEW: Create content for bookmark info windows
+  const createBookmarkInfoWindowContent = (place) => {
+    const ratingStars = place.rating ? '⭐'.repeat(Math.floor(place.rating)) : '';
+    const placeTypes = place.types ? place.types.slice(0, 2).map(type => 
+      type.replace(/_/g, ' ')
+    ).join(', ') : '';
+
+    return `
+      <div style="max-width: 250px; padding: 8px;">
+        <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: bold; color: #1f2937;">
+          ${place.name}
+        </h3>
+        <p style="margin: 0 0 8px 0; font-size: 12px; color: #6b7280; line-height: 1.3;">
+          ${place.address || 'Address not available'}
+        </p>
+        ${place.rating ? `
+          <div style="margin: 4px 0; font-size: 12px; color: #374151;">
+            ${ratingStars} ${place.rating.toFixed(1)} 
+            ${place.userRatingsTotal ? `(${place.userRatingsTotal} reviews)` : ''}
+          </div>
+        ` : ''}
+        ${placeTypes ? `
+          <div style="margin: 4px 0;">
+            <span style="background: #dbeafe; color: #1d4ed8; padding: 2px 6px; border-radius: 4px; font-size: 10px;">
+              ${placeTypes}
+            </span>
+          </div>
+        ` : ''}
+        <div style="margin-top: 8px; display: flex; gap: 4px;">
+          <button onclick="window.selectBookmarkedPlace('${place.id}')" 
+                  style="background: #10b981; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">
+            Add to Trip
+          </button>
+          ${place.website ? `
+            <a href="${place.website}" target="_blank" 
+               style="background: #6b7280; color: white; text-decoration: none; padding: 4px 8px; border-radius: 4px; font-size: 11px;">
+              Website
+            </a>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  };
+
+  // NEW: Global function for info window buttons
+  useEffect(() => {
+    window.selectBookmarkedPlace = (placeId) => {
+      const bookmarkData = bookmarkMarkersRef.current.find(b => b.place.id === placeId);
+      if (bookmarkData && onPlaceClick) {
+        onPlaceClick(bookmarkData.place);
+      }
+    };
+
+    return () => {
+      delete window.selectBookmarkedPlace;
+    };
+  }, [onPlaceClick]);
+
   // Clear markers helper
   const clearMarkers = useCallback(() => {
     markersRef.current.forEach(marker => {
@@ -162,6 +290,20 @@ const GoogleMap = ({
       }
     });
     markersRef.current = [];
+  }, []);
+
+  // NEW: Clear bookmark markers helper
+  const clearBookmarkMarkers = useCallback(() => {
+    console.log('🧹 Clearing bookmark markers, count:', bookmarkMarkersRef.current.length);
+    bookmarkMarkersRef.current.forEach(({ marker, infoWindow }) => {
+      if (infoWindow) {
+        infoWindow.close();
+      }
+      if (marker && marker.setMap) {
+        marker.setMap(null);
+      }
+    });
+    bookmarkMarkersRef.current = [];
   }, []);
 
   // Clear flight paths helper
@@ -431,11 +573,12 @@ const GoogleMap = ({
     return () => {
       clearFlightPaths();
       clearMarkers();
+      clearBookmarkMarkers();
       if (directionsRendererRef.current) {
         directionsRendererRef.current.setMap(null);
       }
     };
-  }, [clearFlightPaths, clearMarkers]);
+  }, [clearFlightPaths, clearMarkers, clearBookmarkMarkers]);
 
   if (error) {
     return (
@@ -503,13 +646,24 @@ const GoogleMap = ({
         </div>
       )}
 
+      {/* NEW: Bookmark indicator */}
+      {showBookmarks && memoizedBookmarkedPlaces.length > 0 && isLoaded && (
+        <div className="absolute top-2 right-2 bg-white rounded-lg shadow-lg px-3 py-2 text-sm z-10">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+            <span className="text-gray-700 font-medium">⭐ {memoizedBookmarkedPlaces.length} Bookmarks</span>
+          </div>
+        </div>
+      )}
+
       {/* Debug info for flight routes */}
       {route && memoizedRouteInfo?.isFlightRoute && isLoaded && (
         <div className="absolute bottom-2 left-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 text-xs z-10 max-w-xs">
           <div className="text-orange-800">
-            <div className="font-medium">Flight Route Debug:</div>
+            <div className="font-medium">Debug Info:</div>
             <div>Coordinates: {memoizedRouteInfo.coordinates?.length || 0}</div>
             <div>Paths rendered: {flightPathRef.current.length}</div>
+            <div>Bookmarks shown: {bookmarkMarkersRef.current.length}</div>
             <div>Has bounds: {memoizedRouteInfo.bounds ? 'Yes' : 'No'}</div>
           </div>
         </div>

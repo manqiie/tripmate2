@@ -1,6 +1,6 @@
-// src/components/places/StopPanel.jsx - Simplified stop panel with places
+// src/components/places/StopPanel.jsx - Enhanced with trip saving functionality
 import React, { useState, useEffect } from 'react';
-import { MapPin, Star, Search } from 'lucide-react';
+import { MapPin, Star, Search, Plus, Check } from 'lucide-react';
 import ModernPlaceSearch from './ModernPlaceSearch';
 import FavoritesManager from './FavoritesManager';
 
@@ -10,10 +10,14 @@ const StopPanel = ({
   onStopClick, 
   onShowFullRoute,
   stopCoordinates,
-  mapMode 
+  mapMode,
+  tripId, // NEW: Trip ID for saving places to trip
+  onPlaceSavedToTrip, // NEW: Callback when place is saved to trip
+  savedTripPlaces = [] // NEW: Places already saved to this trip
 }) => {
   const [favorites, setFavorites] = useState([]);
   const [selectedPlace, setSelectedPlace] = useState(null);
+  const [savingToTrip, setSavingToTrip] = useState({}); // NEW: Track saving state per place
 
   // Load favorites from localStorage
   useEffect(() => {
@@ -57,6 +61,49 @@ const StopPanel = ({
     setSelectedPlace(place);
     // You can emit this to parent to show on map
     console.log('Selected place:', place);
+  };
+
+  // NEW: Save place to trip
+  const handleSavePlaceToTrip = async (place) => {
+    if (!tripId || selectedStop === null) {
+      console.error('Cannot save place: missing tripId or selectedStop');
+      return;
+    }
+
+    setSavingToTrip(prev => ({ ...prev, [place.id]: true }));
+
+    try {
+      // Create a simplified place object for saving to trip
+      const placeToSave = {
+        place_id: place.id,
+        name: place.name,
+        address: place.address,
+        rating: place.rating,
+        user_ratings_total: place.userRatingsTotal,
+        types: place.types,
+        location: place.location,
+        phone: place.phone,
+        website: place.website,
+        stop_index: selectedStop
+      };
+
+      // Call the parent callback to handle the API call
+      if (onPlaceSavedToTrip) {
+        await onPlaceSavedToTrip(placeToSave);
+      }
+
+      console.log('✅ Place saved to trip successfully:', place.name);
+    } catch (error) {
+      console.error('❌ Failed to save place to trip:', error);
+      alert('Failed to save place to trip. Please try again.');
+    } finally {
+      setSavingToTrip(prev => ({ ...prev, [place.id]: false }));
+    }
+  };
+
+  // NEW: Check if place is already saved to trip
+  const isPlaceSavedToTrip = (placeId) => {
+    return savedTripPlaces.some(savedPlace => savedPlace.place_id === placeId);
   };
 
   const getStopIcon = (stop, index) => {
@@ -161,6 +208,10 @@ const StopPanel = ({
               location={currentLocation}
               favorites={favorites}
               onToggleFavorite={handleToggleFavorite}
+              tripId={tripId} // NEW: Pass tripId to ModernPlaceSearch
+              onSavePlaceToTrip={handleSavePlaceToTrip} // NEW: Pass save function
+              isPlaceSavedToTrip={isPlaceSavedToTrip} // NEW: Pass check function
+              savingToTrip={savingToTrip} // NEW: Pass saving state
             />
           </div>
           
@@ -169,6 +220,10 @@ const StopPanel = ({
             favorites={favorites}
             onRemoveFavorite={handleRemoveFavorite}
             onPlaceSelect={handlePlaceSelect}
+            tripId={tripId} // NEW: Pass tripId to FavoritesManager
+            onSavePlaceToTrip={handleSavePlaceToTrip} // NEW: Pass save function
+            isPlaceSavedToTrip={isPlaceSavedToTrip} // NEW: Pass check function
+            savingToTrip={savingToTrip} // NEW: Pass saving state
           />
         </div>
       )}

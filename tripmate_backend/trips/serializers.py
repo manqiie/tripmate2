@@ -1,6 +1,6 @@
-# trips/serializers.py - Updated with checklist support
+# trips/serializers.py - Updated with checklist support and TripPlaces
 from rest_framework import serializers
-from .models import Trip, TripMedia
+from .models import Trip, TripMedia, TripPlaces
 from .checklist_service import ChecklistService
 from datetime import datetime
 
@@ -159,6 +159,77 @@ class ChecklistUpdateSerializer(serializers.Serializer):
                 raise serializers.ValidationError("'completed' field must be a boolean")
         
         return value
+
+# NEW: TripPlaces serializers
+class TripPlacesSerializer(serializers.ModelSerializer):
+    """Serializer for saved trip places"""
+    stop_name = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = TripPlaces
+        fields = [
+            'id', 'stop_index', 'place_id', 'name', 'address', 
+            'latitude', 'longitude', 'rating', 'user_ratings_total',
+            'types', 'phone', 'website', 'user_notes', 'is_visited',
+            'visit_date', 'user_rating', 'stop_name', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+class TripPlacesCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating trip places"""
+    # Extract location data from nested location object
+    location = serializers.DictField(write_only=True, required=False)
+    
+    class Meta:
+        model = TripPlaces
+        fields = [
+            'stop_index', 'place_id', 'name', 'address', 
+            'rating', 'user_ratings_total', 'types', 'phone', 
+            'website', 'user_notes', 'location'
+        ]
+    
+    def validate(self, attrs):
+        # Extract latitude and longitude from location if provided
+        location = attrs.pop('location', None)
+        if location:
+            attrs['latitude'] = location.get('lat')
+            attrs['longitude'] = location.get('lng')
+        
+        # Validate coordinates
+        if not attrs.get('latitude') or not attrs.get('longitude'):
+            raise serializers.ValidationError("Valid latitude and longitude are required")
+        
+        return attrs
+    
+    def create(self, validated_data):
+        trip = self.context['trip']
+        validated_data['trip'] = trip
+        return super().create(validated_data)
+
+class TripPlacesUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating user-specific trip place data"""
+    class Meta:
+        model = TripPlaces
+        fields = ['user_notes', 'is_visited', 'visit_date', 'user_rating']
+
+# Enhanced trip serializer with saved places
+class TripDetailSerializer(TripSerializer):
+    """Enhanced trip serializer with saved places"""
+    saved_places = TripPlacesSerializer(many=True, read_only=True)
+    saved_places_by_stop = serializers.SerializerMethodField()
+    
+    class Meta(TripSerializer.Meta):
+        fields = TripSerializer.Meta.fields + ['saved_places', 'saved_places_by_stop']
+    
+    def get_saved_places_by_stop(self, obj):
+        """Group saved places by stop index"""
+        places_by_stop = {}
+        for place in obj.saved_places.all():
+            stop_index = place.stop_index
+            if stop_index not in places_by_stop:
+                places_by_stop[stop_index] = []
+            places_by_stop[stop_index].append(TripPlacesSerializer(place).data)
+        return places_by_stop
 
 # Media serializers (unchanged)
 class TripMediaSerializer(serializers.ModelSerializer):

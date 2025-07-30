@@ -1,4 +1,4 @@
-# trips/models.py - Updated with trip type and checklist
+# trips/models.py - Updated with trip type, checklist, and TripPlaces
 from django.db import models
 from django.contrib.auth import get_user_model
 
@@ -72,6 +72,58 @@ class Trip(models.Model):
                 categories[category] = []
             categories[category].append(item)
         return categories
+
+
+class TripPlaces(models.Model):
+    """Model to store places saved to specific trips"""
+    trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name='saved_places')
+    stop_index = models.IntegerField()  # Which stop this place belongs to
+    
+    # Place data from Google Places API
+    place_id = models.CharField(max_length=255)  # Google Place ID
+    name = models.CharField(max_length=255)
+    address = models.TextField()
+    latitude = models.FloatField()
+    longitude = models.FloatField()
+    
+    # Additional place info
+    rating = models.FloatField(null=True, blank=True)
+    user_ratings_total = models.IntegerField(null=True, blank=True)
+    types = models.JSONField(default=list, blank=True)  # Place types from Google
+    phone = models.CharField(max_length=50, blank=True)
+    website = models.URLField(blank=True)
+    
+    # User notes and customization
+    user_notes = models.TextField(blank=True)
+    is_visited = models.BooleanField(default=False)
+    visit_date = models.DateField(null=True, blank=True)
+    user_rating = models.IntegerField(null=True, blank=True, choices=[
+        (1, '1 Star'), (2, '2 Stars'), (3, '3 Stars'), (4, '4 Stars'), (5, '5 Stars')
+    ])
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['stop_index', 'name']
+        unique_together = ['trip', 'place_id']  # Prevent duplicate places in same trip
+    
+    def __str__(self):
+        return f"{self.trip.title} - {self.name}"
+    
+    @property
+    def stop_name(self):
+        """Get the name of the stop this place belongs to"""
+        try:
+            if self.stop_index == 0:
+                return self.trip.start_location
+            elif self.stop_index == len(self.trip.waypoints) + 1:
+                return self.trip.end_location
+            else:
+                return self.trip.waypoints[self.stop_index - 1]
+        except (IndexError, AttributeError):
+            return f"Stop {self.stop_index + 1}"
+
 
 class TripMedia(models.Model):
     MEDIA_TYPES = [
