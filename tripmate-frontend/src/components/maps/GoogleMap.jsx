@@ -1,6 +1,7 @@
-// Enhanced GoogleMap.jsx with all features - Complete version
+// Enhanced GoogleMap.jsx with POI click handler integration - Complete version
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import googleMapsService from '../../services/googleMaps';
+import { usePOIClickHandler } from './POIClickHandler';
 
 const GoogleMap = ({ 
   center = { lat: 3.1390, lng: 101.6869 },
@@ -11,11 +12,16 @@ const GoogleMap = ({
   bookmarkedPlaces = [], // Bookmarked places to show
   onMapClick = null,
   onPlaceClick = null, // Callback when a place is clicked
-  onBookmarkPlace = null, // NEW: Callback to bookmark a place from nearby results
+  onBookmarkPlace = null, // Callback to bookmark a place from nearby results
   showBookmarks = true, // Toggle bookmark visibility
-  nearbyPlaces = [], // NEW: For showing category search results
-  selectedCategory = null, // NEW: Current category being searched
-  className = "w-full h-96"
+  nearbyPlaces = [], // For showing category search results
+  selectedCategory = null, // Current category being searched
+  className = "w-full h-96",
+  // POI Click props
+  enablePOIClick = false,
+  currentStopIndex = 0,
+  tripId = null,
+  onSavePlaceToTrip = null
 }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -23,11 +29,14 @@ const GoogleMap = ({
   const flightPathRef = useRef([]);
   const markersRef = useRef([]);
   const bookmarkMarkersRef = useRef([]); // Bookmark markers
-  const nearbyMarkersRef = useRef([]); // NEW: For category search results
+  const nearbyMarkersRef = useRef([]); // For category search results
   
   const [isLoaded, setIsLoaded] = useState(false);
   const [apiLoaded, setApiLoaded] = useState(false);
   const [error, setError] = useState(null);
+
+  // Initialize POI click handler
+  const poiHandler = usePOIClickHandler();
 
   // Memoize center to prevent unnecessary re-renders
   const memoizedCenter = useMemo(() => center, [center?.lat, center?.lng]);
@@ -44,7 +53,7 @@ const GoogleMap = ({
     JSON.stringify(bookmarkedPlaces?.map(p => ({ id: p.id, location: p.location })))
   ]);
 
-  // NEW: Memoize nearby places to prevent unnecessary re-renders
+  // Memoize nearby places to prevent unnecessary re-renders
   const memoizedNearbyPlaces = useMemo(() => nearbyPlaces, [
     JSON.stringify(nearbyPlaces?.map(p => ({ id: p.id, location: p.location })))
   ]);
@@ -105,14 +114,24 @@ const GoogleMap = ({
         fullscreenControl: true,
         zoomControl: true,
         keyboardShortcuts: false,
-      
+        clickableIcons: enablePOIClick, // Enable/disable POI clicks
       });
 
       mapInstanceRef.current = map;
       
-      // Add click listener if provided
+      // Add regular click listener if provided
       if (onMapClick) {
         map.addListener('click', onMapClick);
+      }
+
+      // Initialize POI click handler
+      if (enablePOIClick && onSavePlaceToTrip) {
+        poiHandler.initialize(map, {
+          enabled: enablePOIClick,
+          currentStopIndex,
+          tripId,
+          onSavePlaceToTrip
+        });
       }
 
       // Wait for map to be ready
@@ -131,9 +150,19 @@ const GoogleMap = ({
       console.error('❌ GoogleMap: Map initialization failed:', err);
       setError(`Map initialization failed: ${err.message}`);
     }
-  }, [apiLoaded, memoizedCenter, zoom, onMapClick]);
+  }, [apiLoaded, memoizedCenter, zoom, onMapClick, enablePOIClick, onSavePlaceToTrip, currentStopIndex, tripId, poiHandler]);
 
-  
+  // Update POI handler when props change
+  useEffect(() => {
+    if (mapInstanceRef.current && enablePOIClick && onSavePlaceToTrip) {
+      poiHandler.update({
+        enabled: enablePOIClick,
+        currentStopIndex,
+        tripId,
+        onSavePlaceToTrip
+      });
+    }
+  }, [enablePOIClick, currentStopIndex, tripId, onSavePlaceToTrip, poiHandler]);
 
   // Handle route rendering
   useEffect(() => {
@@ -235,7 +264,7 @@ const GoogleMap = ({
 
   }, [memoizedBookmarkedPlaces, isLoaded, showBookmarks, onPlaceClick]);
 
-  // NEW: Handle nearby places (category search results)
+  // Handle nearby places (category search results)
   useEffect(() => {
     if (!isLoaded || !mapInstanceRef.current) {
       clearNearbyMarkers();
@@ -290,7 +319,7 @@ const GoogleMap = ({
     });
   }, [memoizedNearbyPlaces, selectedCategory, isLoaded, onPlaceClick]);
 
-  // NEW: Navigate to a specific place
+  // Navigate to a specific place
   const navigateToPlace = useCallback((place) => {
     if (!mapInstanceRef.current || !place.location) return;
     
@@ -335,7 +364,7 @@ const GoogleMap = ({
     anchor: new window.google.maps.Point(16, 16)
   });
 
-  // NEW: Create category-specific icons
+  // Create category-specific icons
   const createCategoryIcon = (category) => {
     const categoryIcons = {
       restaurant: { color: '#ef4444', emoji: '🍽️' },
@@ -361,129 +390,126 @@ const GoogleMap = ({
     };
   };
 
-// Enhanced createBookmarkInfoWindowContent function with Google Maps details link
+  // Create bookmark info window content
+  const createBookmarkInfoWindowContent = (place) => {
+    const ratingStars = place.rating ? '⭐'.repeat(Math.floor(place.rating)) : '';
+    const placeTypes = place.types ? place.types.slice(0, 2).map(type => 
+      type.replace(/_/g, ' ')
+    ).join(', ') : '';
 
-// Create bookmark info window content
-const createBookmarkInfoWindowContent = (place) => {
-  const ratingStars = place.rating ? '⭐'.repeat(Math.floor(place.rating)) : '';
-  const placeTypes = place.types ? place.types.slice(0, 2).map(type => 
-    type.replace(/_/g, ' ')
-  ).join(', ') : '';
+    // Create Google Maps URL for the place
+    const googleMapsUrl = createGoogleMapsUrl(place);
 
-  // Create Google Maps URL for the place
-  const googleMapsUrl = createGoogleMapsUrl(place);
-
-  return `
-    <div style="max-width: 250px; padding: 8px;">
-      <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: bold; color: #1f2937;">
-        ${place.name}
-      </h3>
-      <p style="margin: 0 0 8px 0; font-size: 12px; color: #6b7280; line-height: 1.3;">
-        ${place.address || 'Address not available'}
-      </p>
-      ${place.rating ? `
-        <div style="margin: 4px 0; font-size: 12px; color: #374151;">
-          ${ratingStars} ${place.rating.toFixed(1)} 
-          ${place.userRatingsTotal ? `(${place.userRatingsTotal} reviews)` : ''}
-        </div>
-      ` : ''}
-      ${placeTypes ? `
-        <div style="margin: 4px 0;">
-          <span style="background: #dbeafe; color: #1d4ed8; padding: 2px 6px; border-radius: 4px; font-size: 10px;">
-            ${placeTypes}
-          </span>
-        </div>
-      ` : ''}
-      <div style="margin-top: 8px; display: flex; gap: 4px; flex-wrap: wrap;">
-        
-        <a href="${googleMapsUrl}" target="_blank" 
-           style="background: #10b981; color: white; text-decoration: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; display: inline-block;">
-          View on Google Maps
-        </a>
-        ${place.website ? `
-          <a href="${place.website}" target="_blank" 
-             style="background: #6b7280; color: white; text-decoration: none; padding: 4px 8px; border-radius: 4px; font-size: 11px;">
-            Website
-          </a>
+    return `
+      <div style="max-width: 250px; padding: 8px;">
+        <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: bold; color: #1f2937;">
+          ${place.name}
+        </h3>
+        <p style="margin: 0 0 8px 0; font-size: 12px; color: #6b7280; line-height: 1.3;">
+          ${place.address || 'Address not available'}
+        </p>
+        ${place.rating ? `
+          <div style="margin: 4px 0; font-size: 12px; color: #374151;">
+            ${ratingStars} ${place.rating.toFixed(1)} 
+            ${place.userRatingsTotal ? `(${place.userRatingsTotal} reviews)` : ''}
+          </div>
         ` : ''}
-      </div>
-    </div>
-  `;
-};
-
-// Helper function to create Google Maps URL
-const createGoogleMapsUrl = (place) => {
-  const baseUrl = 'https://www.google.com/maps';
-  
-  // If we have a place_id (Google Places ID), use that for the most accurate link
-  if (place.place_id || place.id) {
-    const placeId = place.place_id || place.id;
-    return `${baseUrl}/place/?q=place_id:${placeId}`;
-  }
-  
-  // If we have coordinates, use those
-  if (place.location && place.location.lat && place.location.lng) {
-    const lat = place.location.lat;
-    const lng = place.location.lng;
-    const name = encodeURIComponent(place.name || '');
-    return `${baseUrl}/search/?api=1&query=${name}&query_place_id=${lat},${lng}`;
-  }
-  
-  // Fallback to search by name and address
-  const query = encodeURIComponent(`${place.name} ${place.address || ''}`);
-  return `${baseUrl}/search/?api=1&query=${query}`;
-};
-
-// Enhanced createNearbyPlaceInfoWindowContent function with Google Maps details link
-const createNearbyPlaceInfoWindowContent = (place) => {
-  const ratingStars = place.rating ? '⭐'.repeat(Math.floor(place.rating)) : '';
-  const placeTypes = place.types ? place.types.slice(0, 2).map(type => 
-    type.replace(/_/g, ' ')
-  ).join(', ') : '';
-
-  // Create Google Maps URL for the nearby place
-  const googleMapsUrl = createGoogleMapsUrl(place);
-
-  return `
-    <div style="max-width: 250px; padding: 8px;">
-      <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: bold; color: #1f2937;">
-        ${place.name}
-      </h3>
-      <p style="margin: 0 0 8px 0; font-size: 12px; color: #6b7280; line-height: 1.3;">
-        ${place.address || place.vicinity || 'Address not available'}
-      </p>
-      ${place.rating ? `
-        <div style="margin: 4px 0; font-size: 12px; color: #374151;">
-          ${ratingStars} ${place.rating.toFixed(1)} 
-          ${place.userRatingsTotal ? `(${place.userRatingsTotal} reviews)` : ''}
-        </div>
-      ` : ''}
-      ${placeTypes ? `
-        <div style="margin: 4px 0;">
-          <span style="background: #dcfce7; color: #16a34a; padding: 2px 6px; border-radius: 4px; font-size: 10px;">
-            ${placeTypes}
-          </span>
-        </div>
-      ` : ''}
-      <div style="margin-top: 8px; display: flex; gap: 4px; flex-wrap: wrap;">
-        <button onclick="window.bookmarkNearbyPlace('${place.id}')" 
-                style="background: #f59e0b; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">
-          ⭐ Bookmark
-        </button>
-        <a href="${googleMapsUrl}" target="_blank" 
-           style="background: #1d4ed8; color: white; text-decoration: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; display: inline-block;">
-          🗺️ View on Google Maps
-        </a>
-        ${place.website ? `
-          <a href="${place.website}" target="_blank" 
-             style="background: #6b7280; color: white; text-decoration: none; padding: 4px 8px; border-radius: 4px; font-size: 11px;">
-            Website
-          </a>
+        ${placeTypes ? `
+          <div style="margin: 4px 0;">
+            <span style="background: #dbeafe; color: #1d4ed8; padding: 2px 6px; border-radius: 4px; font-size: 10px;">
+              ${placeTypes}
+            </span>
+          </div>
         ` : ''}
+        <div style="margin-top: 8px; display: flex; gap: 4px; flex-wrap: wrap;">
+          <a href="${googleMapsUrl}" target="_blank" 
+             style="background: #10b981; color: white; text-decoration: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; display: inline-block;">
+            View on Google Maps
+          </a>
+          ${place.website ? `
+            <a href="${place.website}" target="_blank" 
+               style="background: #6b7280; color: white; text-decoration: none; padding: 4px 8px; border-radius: 4px; font-size: 11px;">
+              Website
+            </a>
+          ` : ''}
+        </div>
       </div>
-    </div>
-  `;
-};
+    `;
+  };
+
+  // Create nearby place info window content
+  const createNearbyPlaceInfoWindowContent = (place) => {
+    const ratingStars = place.rating ? '⭐'.repeat(Math.floor(place.rating)) : '';
+    const placeTypes = place.types ? place.types.slice(0, 2).map(type => 
+      type.replace(/_/g, ' ')
+    ).join(', ') : '';
+
+    // Create Google Maps URL for the nearby place
+    const googleMapsUrl = createGoogleMapsUrl(place);
+
+    return `
+      <div style="max-width: 250px; padding: 8px;">
+        <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: bold; color: #1f2937;">
+          ${place.name}
+        </h3>
+        <p style="margin: 0 0 8px 0; font-size: 12px; color: #6b7280; line-height: 1.3;">
+          ${place.address || place.vicinity || 'Address not available'}
+        </p>
+        ${place.rating ? `
+          <div style="margin: 4px 0; font-size: 12px; color: #374151;">
+            ${ratingStars} ${place.rating.toFixed(1)} 
+            ${place.userRatingsTotal ? `(${place.userRatingsTotal} reviews)` : ''}
+          </div>
+        ` : ''}
+        ${placeTypes ? `
+          <div style="margin: 4px 0;">
+            <span style="background: #dcfce7; color: #16a34a; padding: 2px 6px; border-radius: 4px; font-size: 10px;">
+              ${placeTypes}
+            </span>
+          </div>
+        ` : ''}
+        <div style="margin-top: 8px; display: flex; gap: 4px; flex-wrap: wrap;">
+          <button onclick="window.bookmarkNearbyPlace('${place.id}')" 
+                  style="background: #f59e0b; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">
+            ⭐ Bookmark
+          </button>
+          <a href="${googleMapsUrl}" target="_blank" 
+             style="background: #1d4ed8; color: white; text-decoration: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; display: inline-block;">
+            🗺️ View on Google Maps
+          </a>
+          ${place.website ? `
+            <a href="${place.website}" target="_blank" 
+               style="background: #6b7280; color: white; text-decoration: none; padding: 4px 8px; border-radius: 4px; font-size: 11px;">
+              Website
+            </a>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  };
+
+  // Helper function to create Google Maps URL
+  const createGoogleMapsUrl = (place) => {
+    const baseUrl = 'https://www.google.com/maps';
+    
+    // If we have a place_id (Google Places ID), use that for the most accurate link
+    if (place.place_id || place.id) {
+      const placeId = place.place_id || place.id;
+      return `${baseUrl}/place/?q=place_id:${placeId}`;
+    }
+    
+    // If we have coordinates, use those
+    if (place.location && place.location.lat && place.location.lng) {
+      const lat = place.location.lat;
+      const lng = place.location.lng;
+      const name = encodeURIComponent(place.name || '');
+      return `${baseUrl}/search/?api=1&query=${name}&query_place_id=${lat},${lng}`;
+    }
+    
+    // Fallback to search by name and address
+    const query = encodeURIComponent(`${place.name} ${place.address || ''}`);
+    return `${baseUrl}/search/?api=1&query=${query}`;
+  };
 
   // Global functions for info window buttons
   useEffect(() => {
@@ -494,7 +520,7 @@ const createNearbyPlaceInfoWindowContent = (place) => {
       }
     };
 
-    // NEW: Function to bookmark a nearby place
+    // Function to bookmark a nearby place
     window.bookmarkNearbyPlace = (placeId) => {
       const nearbyPlace = nearbyMarkersRef.current.find(p => p.place.id === placeId);
       if (nearbyPlace && onBookmarkPlace) {
@@ -532,7 +558,7 @@ const createNearbyPlaceInfoWindowContent = (place) => {
     bookmarkMarkersRef.current = [];
   }, []);
 
-  // NEW: Clear nearby markers
+  // Clear nearby markers
   const clearNearbyMarkers = useCallback(() => {
     console.log('🧹 Clearing nearby markers, count:', nearbyMarkersRef.current.length);
     nearbyMarkersRef.current.forEach(({ marker, infoWindow }) => {
@@ -886,6 +912,7 @@ const createNearbyPlaceInfoWindowContent = (place) => {
       {/* Enhanced indicators */}
       {isLoaded && (
         <div className="absolute top-2 right-2 space-y-2 z-10">
+     
           {/* Bookmarks indicator */}
           {showBookmarks && memoizedBookmarkedPlaces.length > 0 && (
             <div className="bg-white rounded-lg shadow-lg px-3 py-2 text-sm">
@@ -920,6 +947,7 @@ const createNearbyPlaceInfoWindowContent = (place) => {
             <div>Bookmarks: {bookmarkMarkersRef.current.length}</div>
             <div>Nearby places: {nearbyMarkersRef.current.length}</div>
             <div>Has bounds: {memoizedRouteInfo.bounds ? 'Yes' : 'No'}</div>
+            <div>POI Click: {enablePOIClick ? 'Enabled' : 'Disabled'}</div>
           </div>
         </div>
       )}

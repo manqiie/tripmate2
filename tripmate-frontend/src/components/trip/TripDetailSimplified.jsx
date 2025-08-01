@@ -1,11 +1,9 @@
-// Minimal changes to your existing TripDetailSimplified.jsx
-// Only add the click navigation functionality, keep everything else the same
-
+// Updated TripDetailSimplified.jsx with POI click support and delete function
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, MapPin, Calendar, Users, Clock, Route, ChevronDown, ChevronUp, 
-  Star, Search, CheckSquare, Camera, Map, List, Plus, Check 
+  Star, Search, CheckSquare, Camera, Map, List, Plus, Check, Trash2 
 } from 'lucide-react';
 import GoogleMap from '../maps/GoogleMap';
 import ModernPlaceSearch from '../places/ModernPlaceSearch';
@@ -46,6 +44,9 @@ const TripDetailSimplified = () => {
   const [savedTripPlaces, setSavedTripPlaces] = useState([]);
   const [tripPlacesByStop, setTripPlacesByStop] = useState({});
 
+  // POI saving state (enabled by default for seamless experience)
+  const [poiSavingEnabled, setPOISavingEnabled] = useState(true);
+
   useEffect(() => {
     if (authLoading) return;
     if (!user) {
@@ -77,9 +78,11 @@ const TripDetailSimplified = () => {
     }
   };
 
-  // Save place to trip
+  // Enhanced save place to trip function for POI clicks
   const handleSavePlaceToTrip = async (placeData) => {
     try {
+      console.log('💾 Saving place to trip:', placeData);
+      
       const response = await api.post(`/trips/${id}/places/`, placeData);
       
       // Update local state
@@ -91,13 +94,39 @@ const TripDetailSimplified = () => {
         [newPlace.stop_index]: [...(prev[newPlace.stop_index] || []), newPlace]
       }));
       
-      alert(`✅ ${newPlace.name} saved to your trip!`);
+      console.log('✅ Place saved successfully:', newPlace.name);
+      return newPlace;
+      
     } catch (error) {
+      console.error('❌ Failed to save place:', error);
       if (error.response?.data?.code === 'DUPLICATE_PLACE') {
-        alert('This place is already saved to your trip.');
+        throw new Error('This place is already saved to your trip.');
       } else {
         throw error;
       }
+    }
+  };
+
+  // NEW: Delete saved place function
+  const handleDeleteSavedPlace = async (place) => {
+    try {
+      console.log('🗑️ Deleting place from trip:', place.name);
+      
+      await api.delete(`/trips/${id}/places/${place.id}/`);
+      
+      // Update local state
+      setSavedTripPlaces(prev => prev.filter(p => p.id !== place.id));
+      
+      setTripPlacesByStop(prev => ({
+        ...prev,
+        [place.stop_index]: (prev[place.stop_index] || []).filter(p => p.id !== place.id)
+      }));
+      
+      console.log('✅ Place deleted successfully:', place.name);
+      
+    } catch (error) {
+      console.error('❌ Failed to delete place:', error);
+      alert('Failed to delete place. Please try again.');
     }
   };
 
@@ -310,7 +339,7 @@ const TripDetailSimplified = () => {
     saveFavoritesForStop(stopIndex, newFavorites);
   };
 
-  // NEW: Handle place click - navigate to place on map (MINIMAL ADDITION)
+  // Handle place click - navigate to place on map
   const handlePlaceClick = useCallback((place) => {
     if (window.navigateToPlace) {
       window.navigateToPlace(place);
@@ -318,7 +347,7 @@ const TripDetailSimplified = () => {
     console.log('Navigating to place:', place);
   }, []);
 
-  // NEW: Handle saved place click - convert to proper format and navigate (MINIMAL ADDITION)
+  // Handle saved place click - convert to proper format and navigate
   const handleSavedPlaceClick = useCallback((savedPlace) => {
     const placeForNavigation = {
       id: savedPlace.place_id,
@@ -337,6 +366,7 @@ const TripDetailSimplified = () => {
     handlePlaceClick(placeForNavigation);
   }, [handlePlaceClick]);
 
+  // Enhanced getMapConfig with POI click support
   const getMapConfig = () => {
     // Combine bookmarked places and saved trip places for map display
     const allBookmarkedPlaces = [];
@@ -380,7 +410,12 @@ const TripDetailSimplified = () => {
           title: stopCoord.formatted_address || stops[selectedStop]?.name || 'Stop Location'
         }],
         bookmarkedPlaces: currentStopPlaces,
-        showBookmarks: true
+        showBookmarks: true,
+        // POI click configuration
+        enablePOIClick: poiSavingEnabled,
+        currentStopIndex: selectedStop,
+        tripId: id,
+        onSavePlaceToTrip: handleSavePlaceToTrip
       };
     } else {
       return {
@@ -390,7 +425,12 @@ const TripDetailSimplified = () => {
         routeInfo: routeInfo,
         markers: [],
         bookmarkedPlaces: allBookmarkedPlaces,
-        showBookmarks: true
+        showBookmarks: true,
+        // POI click configuration for full route view
+        enablePOIClick: poiSavingEnabled,
+        currentStopIndex: selectedStop,
+        tripId: id,
+        onSavePlaceToTrip: handleSavePlaceToTrip
       };
     }
   };
@@ -433,7 +473,7 @@ const TripDetailSimplified = () => {
     setTrip(updatedTrip);
   };
 
-  // Enhanced place search component with trip saving (KEEP SAME STYLING)
+  // Enhanced place search component with trip saving
   const EnhancedPlaceSearchWithTrip = ({ 
     location, 
     favorites, 
@@ -531,7 +571,7 @@ const TripDetailSimplified = () => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      {/* Header - KEEP EXACTLY THE SAME */}
+      {/* Header */}
       <div className="bg-white rounded-xl shadow-lg p-6">
         <div className="flex items-center justify-between mb-4">
           <button
@@ -542,17 +582,19 @@ const TripDetailSimplified = () => {
             Back to Saved Trips
           </button>
           
-          <button
-            onClick={() => navigate(`/trip/${trip.id}/edit`)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Edit Trip
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate(`/trip/${trip.id}/edit`)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Edit Trip
+            </button>
+          </div>
         </div>
 
         <h1 className="text-3xl font-bold text-gray-900 mb-2">{trip.title}</h1>
         
-        {/* Trip Type Badge and Stats - KEEP EXACTLY THE SAME */}
+        {/* Trip Type Badge and Stats */}
         <div className="flex items-center gap-2 mb-6">
           {trip.trip_type_display && (
             <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">
@@ -571,7 +613,7 @@ const TripDetailSimplified = () => {
           )}
         </div>
 
-        {/* Trip Info Cards - KEEP EXACTLY THE SAME */}
+        {/* Trip Info Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-blue-50 p-4 rounded-lg">
             <div className="flex items-center gap-2 mb-2">
@@ -621,7 +663,7 @@ const TripDetailSimplified = () => {
           </div>
         </div>
 
-        {/* Flight Route Notice - KEEP EXACTLY THE SAME */}
+        {/* Flight Route Notice */}
         {routeInfo?.isFlightRoute && (
           <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
             <div className="flex items-start gap-3">
@@ -638,7 +680,7 @@ const TripDetailSimplified = () => {
         )}
       </div>
 
-      {/* Navigation Tabs - KEEP EXACTLY THE SAME */}
+      {/* Navigation Tabs */}
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">
         <div className="border-b border-gray-200">
           <nav className="flex">
@@ -692,7 +734,7 @@ const TripDetailSimplified = () => {
 
         {/* Tab Content */}
         <div className="p-6">
-          {/* Overview Tab - KEEP MOSTLY THE SAME, ONLY ADD CLICK HANDLERS */}
+          {/* Overview Tab */}
           {activeTab === 'overview' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[600px]">
               {/* Left Side - Expandable Stops List */}
@@ -720,7 +762,7 @@ const TripDetailSimplified = () => {
                   </div>
                 </div>
                 
-                {/* Expandable Stops - KEEP EXACTLY THE SAME STYLING */}
+                {/* Expandable Stops */}
                 <div className="space-y-3">
                   {stops.map((stop, index) => {
                     const isExpanded = expandedStop === index;
@@ -740,7 +782,7 @@ const TripDetailSimplified = () => {
                             : 'border-gray-200 hover:border-gray-300'
                         }`}
                       >
-                        {/* Stop Header - KEEP EXACTLY THE SAME */}
+                        {/* Stop Header */}
                         <div
                           onClick={() => handleStopClick(index)}
                           className="p-4 cursor-pointer"
@@ -814,7 +856,7 @@ const TripDetailSimplified = () => {
                                 savedTripPlaces={stopSavedPlaces}
                               />
                               
-                              {/* Show saved places for this stop - ADD CLICK HANDLERS */}
+                              {/* Show saved places for this stop - ENHANCED WITH DELETE BUTTON */}
                               {stopSavedPlaces.length > 0 && (
                                 <div className="mt-4">
                                   <h5 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
@@ -825,11 +867,13 @@ const TripDetailSimplified = () => {
                                     {stopSavedPlaces.map(place => (
                                       <div 
                                         key={place.id} 
-                                        className="bg-white rounded-lg p-3 border border-green-200 cursor-pointer hover:border-green-300 hover:shadow-sm transition-all"
-                                        onClick={() => handleSavedPlaceClick(place)}
+                                        className="bg-white rounded-lg p-3 border border-green-200 hover:border-green-300 hover:shadow-sm transition-all group"
                                       >
                                         <div className="flex items-start justify-between">
-                                          <div className="flex-1">
+                                          <div 
+                                            className="flex-1 cursor-pointer"
+                                            onClick={() => handleSavedPlaceClick(place)}
+                                          >
                                             <h6 className="font-medium text-gray-900">{place.name}</h6>
                                             <p className="text-sm text-gray-600">{place.address}</p>
                                             {place.rating && (
@@ -841,12 +885,24 @@ const TripDetailSimplified = () => {
                                                 )}
                                               </div>
                                             )}
-                                          
                                           </div>
-                                          <div className="flex items-center gap-1">
+                                          <div className="flex items-center gap-2 ml-3">
                                             <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
                                               Saved
                                             </span>
+                                            {/* DELETE BUTTON */}
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (window.confirm(`Remove "${place.name}" from your trip?`)) {
+                                                  handleDeleteSavedPlace(place);
+                                                }
+                                              }}
+                                              className="opacity-0 group-hover:opacity-100 p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-all"
+                                              title="Remove from trip"
+                                            >
+                                              <Trash2 className="w-3 h-3" />
+                                            </button>
                                           </div>
                                         </div>
                                       </div>
@@ -874,7 +930,7 @@ const TripDetailSimplified = () => {
                 </div>
               </div>
 
-              {/* Right Side - Enhanced Map with Bookmarks */}
+              {/* Right Side - Enhanced Map with POI Click Support */}
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-bold text-gray-900">Route Map</h2>
@@ -906,6 +962,11 @@ const TripDetailSimplified = () => {
                     bookmarkedPlaces={mapConfig.bookmarkedPlaces}
                     showBookmarks={mapConfig.showBookmarks}
                     onPlaceClick={handlePlaceClick}
+                    // POI click props
+                    enablePOIClick={mapConfig.enablePOIClick}
+                    currentStopIndex={mapConfig.currentStopIndex}
+                    tripId={mapConfig.tripId}
+                    onSavePlaceToTrip={mapConfig.onSavePlaceToTrip}
                     className="w-full h-[500px] rounded-lg"
                   />
                 </div>
