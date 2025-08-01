@@ -1,14 +1,16 @@
-// Enhanced ModernPlaceSearch.jsx with category search functionality
+// Fixed ModernPlaceSearch.jsx - Category Click Issue Resolved
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Search, Star, MapPin, X, Filter, Hotel, Utensils, ShoppingBag, Car, Plane, Hospital } from 'lucide-react';
+import { Search, Star, MapPin, X, Filter, Hotel, Utensils, ShoppingBag, Car, Plane, Hospital, Check } from 'lucide-react';
 
 const ModernPlaceSearch = ({ 
   location, 
-  favorites = [], 
-  onToggleFavorite,
-  onCategorySearch, // NEW: Callback for category-based search
-  onPlaceClick, // NEW: Callback when a place is clicked
-  renderExtraActions
+  onCategorySearch, // Callback for category-based search
+  onPlaceClick, // Callback when a place is clicked
+  renderExtraActions,
+  // Trip saving props (replacing favorites)
+  onSavePlaceToTrip,
+  savedTripPlaces = [],
+  currentStopIndex
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -17,6 +19,7 @@ const ModernPlaceSearch = ({
   const [error, setError] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [showCategoryFilter, setShowCategoryFilter] = useState(false);
+  const [savingStates, setSavingStates] = useState({}); // Track saving state per place
   
   // Refs for cleanup and preventing duplicate calls
   const searchRef = useRef(null);
@@ -25,6 +28,7 @@ const ModernPlaceSearch = ({
   const lastSearchQueryRef = useRef('');
   const lastLocationRef = useRef(null);
   const searchTimeoutRef = useRef(null);
+  const lastCategorySearchRef = useRef(null);
 
   // Category definitions with Google Places API types
   const categoryDefinitions = [
@@ -32,7 +36,7 @@ const ModernPlaceSearch = ({
       id: 'restaurant',
       name: 'Restaurants',
       icon: Utensils,
-      color: 'red',
+      color: 'blue',
       googleTypes: ['restaurant', 'meal_takeaway', 'food'],
       keywords: ['restaurant', 'food', 'dining', 'eat', 'cafe', 'bar', 'pub']
     },
@@ -48,7 +52,7 @@ const ModernPlaceSearch = ({
       id: 'tourist_attraction',
       name: 'Attractions',
       icon: MapPin,
-      color: 'green',
+      color: 'blue',
       googleTypes: ['tourist_attraction', 'museum', 'park'],
       keywords: ['attraction', 'tourist', 'museum', 'park', 'temple', 'monument', 'landmark']
     },
@@ -56,7 +60,7 @@ const ModernPlaceSearch = ({
       id: 'shopping_mall',
       name: 'Shopping',
       icon: ShoppingBag,
-      color: 'purple',
+      color: 'blue',
       googleTypes: ['shopping_mall', 'store'],
       keywords: ['shop', 'mall', 'store', 'market', 'shopping', 'retail']
     },
@@ -64,7 +68,7 @@ const ModernPlaceSearch = ({
       id: 'gas_station',
       name: 'Gas Stations',
       icon: Car,
-      color: 'orange',
+      color: 'blue',
       googleTypes: ['gas_station'],
       keywords: ['gas', 'fuel', 'petrol', 'station']
     },
@@ -72,7 +76,7 @@ const ModernPlaceSearch = ({
       id: 'hospital',
       name: 'Healthcare',
       icon: Hospital,
-      color: 'pink',
+      color: 'blue',
       googleTypes: ['hospital', 'doctor', 'pharmacy'],
       keywords: ['hospital', 'doctor', 'clinic', 'pharmacy', 'medical', 'health']
     }
@@ -86,17 +90,34 @@ const ModernPlaceSearch = ({
     return { lat: location.lat, lng: location.lng };
   }, [location?.lat, location?.lng]);
 
-  // Category search logic
+  // FIXED: Category search logic - properly handles dropdown visibility
   const handleCategoryClick = useCallback(async (category) => {
     if (!memoizedLocation) {
       setError('Location required for category search');
       return;
     }
 
+    // Clear any pending search timeouts
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    // Abort any ongoing searches
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // FIXED: Set states immediately to show loading state and close category filter
     setSelectedCategory(category);
     setLoading(true);
     setError('');
     setShowCategoryFilter(false);
+    setShowDropdown(true); // FIXED: Ensure dropdown shows immediately
+    setSearchResults([]); // Clear previous results while loading
+
+    // Update refs to prevent duplicate search prevention
+    const timestamp = Date.now();
+    lastCategorySearchRef.current = `${category.id}-${timestamp}`;
 
     try {
       console.log(`🔍 Searching for ${category.name} near location`);
@@ -122,6 +143,9 @@ const ModernPlaceSearch = ({
 
       // Perform nearby search
       service.nearbySearch(request, (results, status) => {
+        // FIXED: Always update loading state and maintain dropdown visibility
+        setLoading(false);
+        
         if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
           const formattedResults = results.slice(0, 20).map(place => {
             try {
@@ -140,22 +164,24 @@ const ModernPlaceSearch = ({
             onCategorySearch(formattedResults, category.id);
           }
           
+          // FIXED: Keep dropdown open with results
           setShowDropdown(true);
         } else if (status === window.google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
           setSearchResults([]);
-          setShowDropdown(true);
+          setShowDropdown(true); // FIXED: Still show dropdown with "no results" message
           setError(`No ${category.name.toLowerCase()} found in this area`);
         } else {
           console.error(`❌ Category search failed: ${status}`);
           setError(`Failed to search for ${category.name.toLowerCase()}`);
+          setShowDropdown(true); // FIXED: Show dropdown with error message
         }
-        setLoading(false);
       });
 
     } catch (err) {
       console.error('Category search error:', err);
       setError(`Category search failed: ${err.message}`);
       setLoading(false);
+      setShowDropdown(true); // FIXED: Show dropdown with error message
     }
   }, [memoizedLocation, onCategorySearch]);
 
@@ -163,6 +189,7 @@ const ModernPlaceSearch = ({
   const formatPlaceForCategory = useCallback((place) => {
     return {
       id: place.place_id,
+      place_id: place.place_id,
       name: place.name,
       address: place.vicinity || place.formatted_address,
       rating: place.rating || 0,
@@ -182,8 +209,13 @@ const ModernPlaceSearch = ({
     };
   }, []);
 
-  // Enhanced debounced search with category detection
+  // FIXED: Enhanced debounced search with better category handling
   useEffect(() => {
+    // Don't interfere with category searches
+    if (lastCategorySearchRef.current) {
+      return;
+    }
+
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
@@ -228,7 +260,7 @@ const ModernPlaceSearch = ({
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [searchQuery, memoizedLocation, selectedCategory, handleCategoryClick]);
+  }, [searchQuery, memoizedLocation]);
 
   // Detect category from search query
   const detectCategoryFromQuery = useCallback((query) => {
@@ -255,6 +287,7 @@ const ModernPlaceSearch = ({
     
     setLoading(true);
     setError('');
+    setShowDropdown(true); // FIXED: Show dropdown immediately when searching
 
     try {
       if (!window.google?.maps?.places) {
@@ -275,6 +308,8 @@ const ModernPlaceSearch = ({
       service.nearbySearch(request, (results, status) => {
         if (abortControllerRef.current?.signal.aborted) return;
 
+        setLoading(false);
+
         if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
           const formattedResults = results.slice(0, 8).map(place => {
             try {
@@ -286,19 +321,16 @@ const ModernPlaceSearch = ({
           }).filter(Boolean);
           
           setSearchResults(formattedResults);
-          setShowDropdown(true);
           
           if (formattedResults.length === 0) {
             setError(`No places found for "${searchQuery}"`);
           }
         } else if (status === window.google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
           setSearchResults([]);
-          setShowDropdown(true);
           setError(`No results found for "${searchQuery}"`);
         } else {
           setError(`Search failed: ${status}`);
         }
-        setLoading(false);
       });
 
     } catch (err) {
@@ -331,13 +363,45 @@ const ModernPlaceSearch = ({
     };
   }, []);
 
-  const isFavorite = useCallback((placeId) => {
-    return favorites.some(fav => fav.id === placeId);
-  }, [favorites]);
+  // Check if place is already saved to trip
+  const isPlaceSavedToTrip = useCallback((placeId) => {
+    return savedTripPlaces.some(saved => saved.place_id === placeId);
+  }, [savedTripPlaces]);
 
-  const handleToggleFavorite = useCallback((place) => {
-    onToggleFavorite(place);
-  }, [onToggleFavorite]);
+  // Handle saving place to trip (via star icon)
+  const handleSavePlaceToTrip = useCallback(async (place) => {
+    if (!onSavePlaceToTrip) {
+      console.warn('No onSavePlaceToTrip callback provided');
+      return;
+    }
+
+    // Set saving state
+    setSavingStates(prev => ({ ...prev, [place.id]: true }));
+
+    try {
+      const placeData = {
+        place_id: place.id,
+        name: place.name,
+        address: place.address,
+        rating: place.rating,
+        user_ratings_total: place.userRatingsTotal,
+        types: place.types,
+        location: place.location,
+        phone: place.phone,
+        website: place.website,
+        stop_index: currentStopIndex
+      };
+
+      await onSavePlaceToTrip(placeData);
+      console.log('✅ Place saved to trip:', place.name);
+      
+    } catch (error) {
+      console.error('❌ Failed to save place to trip:', error);
+      // You might want to show an error message to the user here
+    } finally {
+      setSavingStates(prev => ({ ...prev, [place.id]: false }));
+    }
+  }, [onSavePlaceToTrip, currentStopIndex]);
 
   const clearSearch = useCallback(() => {
     if (abortControllerRef.current) {
@@ -351,6 +415,7 @@ const ModernPlaceSearch = ({
     setSelectedCategory(null);
     lastSearchQueryRef.current = '';
     lastLocationRef.current = null;
+    lastCategorySearchRef.current = null;
     
     // Clear category search results from map
     if (onCategorySearch) {
@@ -364,25 +429,48 @@ const ModernPlaceSearch = ({
     }
   }, [onPlaceClick]);
 
+  // Modified star icon renderer - now for trip saving instead of favorites
   const renderStarIcon = useCallback((place) => {
-    const isStarred = isFavorite(place.id);
+    const isAlreadySaved = isPlaceSavedToTrip(place.id);
+    const isSaving = savingStates[place.id];
+    
+    if (isSaving) {
+      return (
+        <button
+          disabled
+          className="p-2 rounded-full bg-gray-100 text-gray-400 cursor-not-allowed"
+          title="Saving to trip..."
+        >
+          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+        </button>
+      );
+    }
+    
+    if (isAlreadySaved) {
+      return (
+        <button
+          disabled
+          className="p-2 rounded-full text-green-600 bg-green-50 cursor-default"
+          title="Already saved to trip"
+        >
+          <Check className="w-5 h-5" />
+        </button>
+      );
+    }
+    
     return (
       <button
         onClick={(e) => {
           e.stopPropagation();
-          handleToggleFavorite(place);
+          handleSavePlaceToTrip(place);
         }}
-        className={`p-2 rounded-full transition-colors ${
-          isStarred 
-            ? 'text-yellow-500 hover:text-yellow-600 bg-yellow-50' 
-            : 'text-gray-400 hover:text-yellow-500 hover:bg-yellow-50'
-        }`}
-        title={isStarred ? 'Remove from favorites' : 'Add to favorites'}
+        className="p-2 rounded-full transition-colors text-gray-400 hover:text-yellow-500 hover:bg-yellow-50"
+        title="Save to trip"
       >
-        <Star className={`w-5 h-5 ${isStarred ? 'fill-current' : ''}`} />
+        <Star className="w-5 h-5" />
       </button>
     );
-  }, [isFavorite, handleToggleFavorite]);
+  }, [isPlaceSavedToTrip, savingStates, handleSavePlaceToTrip]);
 
   const renderRating = useCallback((rating, totalRatings) => {
     if (!rating) return null;
@@ -540,14 +628,25 @@ const ModernPlaceSearch = ({
             </div>
           )}
 
-          {error && (
+          {/* Loading State */}
+          {loading && (
+            <div className="p-4 text-center">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+              <div className="text-sm text-gray-600">
+                Searching for {selectedCategory ? selectedCategory.name.toLowerCase() : 'places'}...
+              </div>
+            </div>
+          )}
+
+          {/* Error State */}
+          {error && !loading && (
             <div className="p-3 text-red-600 text-sm border-b border-gray-100">
               {error}
             </div>
           )}
           
           {/* Search Results */}
-          {searchResults.length > 0 ? (
+          {!loading && searchResults.length > 0 && (
             <div>
               <div className="px-3 py-2 bg-gray-50 text-sm font-medium text-gray-700 border-b border-gray-100">
                 Found {searchResults.length} {selectedCategory ? selectedCategory.name.toLowerCase() : 'places'}
@@ -576,9 +675,9 @@ const ModernPlaceSearch = ({
                         </p>
                       </div>
                       
-                      {/* Action Buttons Container */}
+                      {/* Action Buttons Container - Only Star Button Now */}
                       <div className="ml-2 flex-shrink-0 flex items-center gap-1">
-                        {/* Star Button */}
+                        {/* Star Button (now for trip saving) */}
                         {renderStarIcon(place)}
                         
                         {/* Extra Actions */}
@@ -615,7 +714,10 @@ const ModernPlaceSearch = ({
                 </div>
               ))}
             </div>
-          ) : searchQuery.length > 2 && !loading ? (
+          )}
+
+          {/* No Results State */}
+          {!loading && searchResults.length === 0 && (searchQuery.length > 2 || selectedCategory) && !error && (
             <div className="p-4 text-center text-gray-500">
               <div className="mb-2">
                 No {selectedCategory ? selectedCategory.name.toLowerCase() : 'places'} found
@@ -628,7 +730,7 @@ const ModernPlaceSearch = ({
                 <div>• Or use the category filter above</div>
               </div>
             </div>
-          ) : null}
+          )}
         </div>
       )}
     </div>

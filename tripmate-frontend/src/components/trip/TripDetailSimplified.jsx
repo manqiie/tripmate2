@@ -1,13 +1,12 @@
-// Updated TripDetailSimplified.jsx with POI click support and delete function
+// Updated TripDetailSimplified.jsx with star for trip saving (no more favorites)
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, MapPin, Calendar, Users, Clock, Route, ChevronDown, ChevronUp, 
-  Star, Search, CheckSquare, Camera, Map, List, Plus, Check, Trash2 
+  Star, Search, CheckSquare, Camera, Map, List, Check, Trash2 
 } from 'lucide-react';
 import GoogleMap from '../maps/GoogleMap';
 import ModernPlaceSearch from '../places/ModernPlaceSearch';
-import FavoritesManager from '../places/FavoritesManager';
 import TripMemories from '../media/TripMemories';
 import TripChecklist from './TripChecklist';
 import api from '../../services/api';
@@ -37,10 +36,7 @@ const TripDetailSimplified = () => {
   // Expandable stops state
   const [expandedStop, setExpandedStop] = useState(null);
   
-  // Favorites state (per stop)
-  const [favoritesByStop, setFavoritesByStop] = useState({});
-  
-  // Trip places state
+  // Trip places state (removed favorites)
   const [savedTripPlaces, setSavedTripPlaces] = useState([]);
   const [tripPlacesByStop, setTripPlacesByStop] = useState({});
 
@@ -54,7 +50,6 @@ const TripDetailSimplified = () => {
       return;
     }
     fetchTripDetail();
-    loadAllFavorites();
     fetchSavedTripPlaces();
   }, [id, user, authLoading]);
 
@@ -107,7 +102,7 @@ const TripDetailSimplified = () => {
     }
   };
 
-  // NEW: Delete saved place function
+  // Delete saved place function
   const handleDeleteSavedPlace = async (place) => {
     try {
       console.log('🗑️ Deleting place from trip:', place.name);
@@ -128,28 +123,6 @@ const TripDetailSimplified = () => {
       console.error('❌ Failed to delete place:', error);
       alert('Failed to delete place. Please try again.');
     }
-  };
-
-  // Load favorites for all stops
-  const loadAllFavorites = () => {
-    const savedFavorites = localStorage.getItem('tripmate_favorites_by_stop');
-    if (savedFavorites) {
-      try {
-        setFavoritesByStop(JSON.parse(savedFavorites));
-      } catch (e) {
-        console.error('Error loading favorites:', e);
-      }
-    }
-  };
-
-  // Save favorites for a specific stop
-  const saveFavoritesForStop = (stopIndex, favorites) => {
-    const newFavoritesByStop = {
-      ...favoritesByStop,
-      [`${id}_${stopIndex}`]: favorites
-    };
-    setFavoritesByStop(newFavoritesByStop);
-    localStorage.setItem('tripmate_favorites_by_stop', JSON.stringify(newFavoritesByStop));
   };
 
   const fetchTripDetail = async () => {
@@ -316,29 +289,6 @@ const TripDetailSimplified = () => {
     }
   };
 
-  // Handle favorites for specific stop
-  const handleToggleFavorite = (stopIndex, place) => {
-    const stopKey = `${id}_${stopIndex}`;
-    const currentFavorites = favoritesByStop[stopKey] || [];
-    const existingIndex = currentFavorites.findIndex(fav => fav.id === place.id);
-    
-    let newFavorites;
-    if (existingIndex >= 0) {
-      newFavorites = currentFavorites.filter(fav => fav.id !== place.id);
-    } else {
-      newFavorites = [...currentFavorites, place];
-    }
-    
-    saveFavoritesForStop(stopIndex, newFavorites);
-  };
-
-  const handleRemoveFavorite = (stopIndex, place) => {
-    const stopKey = `${id}_${stopIndex}`;
-    const currentFavorites = favoritesByStop[stopKey] || [];
-    const newFavorites = currentFavorites.filter(fav => fav.id !== place.id);
-    saveFavoritesForStop(stopIndex, newFavorites);
-  };
-
   // Handle place click - navigate to place on map
   const handlePlaceClick = useCallback((place) => {
     if (window.navigateToPlace) {
@@ -368,10 +318,9 @@ const TripDetailSimplified = () => {
 
   // Enhanced getMapConfig with POI click support
   const getMapConfig = () => {
-    // Combine bookmarked places and saved trip places for map display
+    // Add saved trip places as bookmarks for map display
     const allBookmarkedPlaces = [];
     
-    // Add saved trip places as bookmarks
     savedTripPlaces.forEach(place => {
       allBookmarkedPlaces.push({
         id: place.place_id,
@@ -473,65 +422,28 @@ const TripDetailSimplified = () => {
     setTrip(updatedTrip);
   };
 
-  // Enhanced place search component with trip saving
+  // Enhanced place search component (star saves to trip, no favorites)
   const EnhancedPlaceSearchWithTrip = ({ 
     location, 
-    favorites, 
-    onToggleFavorite, 
     stopIndex,
     savedTripPlaces 
   }) => {
     return (
       <ModernPlaceSearch
         location={location}
-        favorites={favorites}
-        onToggleFavorite={onToggleFavorite}
-        renderExtraActions={(place) => {
-          const isAlreadySaved = savedTripPlaces.some(
-            saved => saved.place_id === place.id
-          );
-          
-          return (
-            <div className="ml-2">
-              {isAlreadySaved ? (
-                <button
-                  disabled
-                  className="flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-lg text-sm cursor-not-allowed"
-                  title="Already saved to trip"
-                >
-                  <Check className="w-3 h-3" />
-                  Saved
-                </button>
-              ) : (
-                <button
-                  onClick={async () => {
-                    try {
-                      await handleSavePlaceToTrip({
-                        place_id: place.id,
-                        name: place.name,
-                        address: place.address,
-                        rating: place.rating,
-                        user_ratings_total: place.userRatingsTotal,
-                        types: place.types,
-                        location: place.location,
-                        phone: place.phone,
-                        website: place.website,
-                        stop_index: stopIndex
-                      });
-                    } catch (error) {
-                      console.error('Failed to save place:', error);
-                    }
-                  }}
-                  className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors"
-                  title="Save to trip"
-                >
-                  <Plus className="w-3 h-3" />
-                  Add to Trip
-                </button>
-              )}
-            </div>
-          );
+        onCategorySearch={(places, categoryId) => {
+          // Handle category search results if needed
         }}
+        onPlaceClick={handlePlaceClick}
+        onSavePlaceToTrip={async (placeData) => {
+          const placeToSave = {
+            ...placeData,
+            stop_index: stopIndex
+          };
+          return await handleSavePlaceToTrip(placeToSave);
+        }}
+        savedTripPlaces={savedTripPlaces.filter(place => place.stop_index === stopIndex)}
+        currentStopIndex={stopIndex}
       />
     );
   };
@@ -766,8 +678,6 @@ const TripDetailSimplified = () => {
                 <div className="space-y-3">
                   {stops.map((stop, index) => {
                     const isExpanded = expandedStop === index;
-                    const stopKey = `${id}_${index}`;
-                    const stopFavorites = favoritesByStop[stopKey] || [];
                     const currentLocation = stopCoordinates[index];
                     const stopSavedPlaces = tripPlacesByStop[index] || [];
                     
@@ -801,12 +711,6 @@ const TripDetailSimplified = () => {
                               
                               {/* Show counts */}
                               <div className="flex items-center gap-3 text-xs mb-2">
-                                {stopFavorites.length > 0 && (
-                                  <div className="flex items-center gap-1 text-blue-600">
-                                    <Star className="w-3 h-3 fill-current" />
-                                    <span>{stopFavorites.length} favorite{stopFavorites.length !== 1 ? 's' : ''}</span>
-                                  </div>
-                                )}
                                 {stopSavedPlaces.length > 0 && (
                                   <div className="flex items-center gap-1 text-green-600">
                                     <MapPin className="w-3 h-3" />
@@ -847,16 +751,14 @@ const TripDetailSimplified = () => {
                                 Explore {stop.name}
                               </h4>
                               
-                              {/* Enhanced Places Search with Trip Saving */}
+                              {/* Enhanced Places Search (Star saves to trip) */}
                               <EnhancedPlaceSearchWithTrip
                                 location={currentLocation}
-                                favorites={stopFavorites}
-                                onToggleFavorite={(place) => handleToggleFavorite(index, place)}
                                 stopIndex={index}
                                 savedTripPlaces={stopSavedPlaces}
                               />
                               
-                              {/* Show saved places for this stop - ENHANCED WITH DELETE BUTTON */}
+                              {/* Show saved places for this stop with DELETE BUTTON */}
                               {stopSavedPlaces.length > 0 && (
                                 <div className="mt-4">
                                   <h5 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
@@ -908,17 +810,6 @@ const TripDetailSimplified = () => {
                                       </div>
                                     ))}
                                   </div>
-                                </div>
-                              )}
-                              
-                              {/* Favorites for this stop */}
-                              {stopFavorites.length > 0 && (
-                                <div className="mt-4">
-                                  <FavoritesManager
-                                    favorites={stopFavorites}
-                                    onRemoveFavorite={(place) => handleRemoveFavorite(index, place)}
-                                    onPlaceSelect={handlePlaceClick}
-                                  />
                                 </div>
                               )}
                             </div>

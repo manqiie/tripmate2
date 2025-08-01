@@ -177,7 +177,7 @@ class POIClickHandler {
         <!-- Header -->
         <div style="background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; padding: 12px 16px; margin: 0; border-radius: 8px 8px 0 0;">
           <div style="display: flex; align-items: center; gap: 8px; margin: 0;">
-            <span style="font-size: 18px;">📍</span>
+        
             <h3 style="margin: 0; font-size: 16px; font-weight: 600; line-height: 1.3;">
               ${place.name}
             </h3>
@@ -220,20 +220,17 @@ class POIClickHandler {
                     style="background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-size: 12px; cursor: pointer; font-weight: 600; flex: 1; transition: all 0.2s; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);"
                     onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(16, 185, 129, 0.4)';"
                     onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(16, 185, 129, 0.3)';">
-              ⭐ Save to Trip
+              Save to Trip
             </button>
             
             <a href="${googleMapsUrl}" target="_blank" 
                style="background: #6b7280; color: white; text-decoration: none; padding: 8px 12px; border-radius: 6px; font-size: 11px; display: flex; align-items: center; justify-content: center; min-width: 60px; transition: all 0.2s;"
                onmouseover="this.style.background='#4b5563';"
                onmouseout="this.style.background='#6b7280';">
-              🗺️ Details
+              Details
             </a>
           </div>
           
-          <div style="margin-top: 8px; font-size: 10px; color: #9ca3af; text-align: center;">
-            💡 Click outside to close • Auto-closes in 15s
-          </div>
         </div>
       </div>
     `;
@@ -293,7 +290,7 @@ class POIClickHandler {
 
   // Show success notification
   showSuccessMessage(placeName) {
-    this.showNotification(`✅ Saved "${placeName}" to your trip!`, 'success');
+    this.showNotification(`Saved "${placeName}" to your trip!`, 'success');
   }
 
   // Show warning notification

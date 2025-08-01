@@ -97,42 +97,7 @@ const SavedTrips = () => {
       <div className="bg-white rounded-xl shadow-lg p-6">
         <h1 className="text-3xl font-bold text-gray-900 mb-6">My Saved Trips</h1>
         
-        {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <div className="flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-blue-600" />
-                <span className="font-medium text-blue-800">Total Trips</span>
-              </div>
-              <p className="text-2xl font-bold text-blue-900">{stats.total_trips}</p>
-            </div>
-            <div className="bg-green-50 p-4 rounded-lg">
-              <div className="flex items-center gap-2">
-                <Route className="w-5 h-5 text-green-600" />
-                <span className="font-medium text-green-800">Total Distance</span>
-              </div>
-              <p className="text-2xl font-bold text-green-900">{stats.total_distance} km</p>
-            </div>
-            <div className="bg-purple-50 p-4 rounded-lg">
-              <div className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-purple-600" />
-                <span className="font-medium text-purple-800">Travel Time</span>
-              </div>
-              <p className="text-2xl font-bold text-purple-900">
-                {formatDuration(stats.total_duration)}
-              </p>
-            </div>
-            <div className="bg-orange-50 p-4 rounded-lg">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-orange-600" />
-                <span className="font-medium text-orange-800">Avg Duration</span>
-              </div>
-              <p className="text-2xl font-bold text-orange-900">
-                {stats.total_trips > 0 ? Math.round(stats.total_duration / stats.total_trips / 60 / 24) : 0} days
-              </p>
-            </div>
-          </div>
-        )}
+       
 
         {/* Search */}
         <div className="relative">

@@ -1,8 +1,7 @@
-// Enhanced StopPanel.jsx with category search and place navigation
+// Enhanced StopPanel.jsx 
 import React, { useState, useEffect } from 'react';
-import { MapPin, Star, Search, Plus, Check, Navigation, Eye } from 'lucide-react';
+import { MapPin, Star, Search, Check, Navigation, Eye, Trash2 } from 'lucide-react';
 import ModernPlaceSearch from './ModernPlaceSearch';
-import FavoritesManager from './FavoritesManager';
 
 const StopPanel = ({ 
   stops, 
@@ -14,54 +13,15 @@ const StopPanel = ({
   tripId,
   onPlaceSavedToTrip,
   savedTripPlaces = [],
-  onCategorySearch, // NEW: Callback for category search results
-  onNavigateToPlace // NEW: Callback to navigate to a place on map
+  onCategorySearch, // Callback for category search results
+  onNavigateToPlace // Callback to navigate to a place on map
 }) => {
-  const [favorites, setFavorites] = useState([]);
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [savingToTrip, setSavingToTrip] = useState({});
-  const [nearbySearchResults, setNearbySearchResults] = useState([]); // NEW: Category search results
-  const [activeCategory, setActiveCategory] = useState(null); // NEW: Currently active category
+  const [nearbySearchResults, setNearbySearchResults] = useState([]); // Category search results
+  const [activeCategory, setActiveCategory] = useState(null); // Currently active category
 
-  // Load favorites from localStorage
-  useEffect(() => {
-    const savedFavorites = localStorage.getItem('tripmate_favorites');
-    if (savedFavorites) {
-      try {
-        setFavorites(JSON.parse(savedFavorites));
-      } catch (e) {
-        console.error('Error loading favorites:', e);
-      }
-    }
-  }, []);
-
-  // Save favorites to localStorage
-  const saveFavorites = (newFavorites) => {
-    setFavorites(newFavorites);
-    localStorage.setItem('tripmate_favorites', JSON.stringify(newFavorites));
-  };
-
-  const handleToggleFavorite = (place) => {
-    const existingIndex = favorites.findIndex(fav => fav.id === place.id);
-    let newFavorites;
-    
-    if (existingIndex >= 0) {
-      // Remove from favorites
-      newFavorites = favorites.filter(fav => fav.id !== place.id);
-    } else {
-      // Add to favorites
-      newFavorites = [...favorites, place];
-    }
-    
-    saveFavorites(newFavorites);
-  };
-
-  const handleRemoveFavorite = (place) => {
-    const newFavorites = favorites.filter(fav => fav.id !== place.id);
-    saveFavorites(newFavorites);
-  };
-
-  // NEW: Handle category search results
+  // Handle category search results
   const handleCategorySearch = (places, categoryId) => {
     setNearbySearchResults(places);
     setActiveCategory(categoryId);
@@ -72,7 +32,7 @@ const StopPanel = ({
     }
   };
 
-  // NEW: Handle place click (from search results or favorites)
+  // Handle place click (from search results)
   const handlePlaceClick = (place) => {
     setSelectedPlace(place);
     
@@ -91,15 +51,15 @@ const StopPanel = ({
       return;
     }
 
-    setSavingToTrip(prev => ({ ...prev, [place.id]: true }));
+    setSavingToTrip(prev => ({ ...prev, [place.place_id]: true }));
 
     try {
       const placeToSave = {
-        place_id: place.id,
+        place_id: place.place_id,
         name: place.name,
         address: place.address,
         rating: place.rating,
-        user_ratings_total: place.userRatingsTotal,
+        user_ratings_total: place.user_ratings_total,
         types: place.types,
         location: place.location,
         phone: place.phone,
@@ -116,7 +76,7 @@ const StopPanel = ({
       console.error('❌ Failed to save place to trip:', error);
       alert('Failed to save place to trip. Please try again.');
     } finally {
-      setSavingToTrip(prev => ({ ...prev, [place.id]: false }));
+      setSavingToTrip(prev => ({ ...prev, [place.place_id]: false }));
     }
   };
 
@@ -147,24 +107,23 @@ const StopPanel = ({
     ? stopCoordinates[selectedStop] 
     : null;
 
-  // NEW: Enhanced place search with category support
+  // Enhanced place search component (no more favorites, star saves to trip)
   const EnhancedPlaceSearchWithTrip = ({ 
     location, 
-    favorites, 
-    onToggleFavorite, 
     stopIndex,
     savedTripPlaces 
   }) => {
     return (
       <ModernPlaceSearch
         location={location}
-        favorites={favorites}
-        onToggleFavorite={onToggleFavorite}
         onCategorySearch={handleCategorySearch}
         onPlaceClick={handlePlaceClick}
+        onSavePlaceToTrip={handleSavePlaceToTrip}
+        savedTripPlaces={savedTripPlaces.filter(place => place.stop_index === stopIndex)}
+        currentStopIndex={stopIndex}
         renderExtraActions={(place) => {
           const isAlreadySaved = savedTripPlaces.some(
-            saved => saved.place_id === place.id
+            saved => saved.place_id === place.id && saved.stop_index === stopIndex
           );
           
           return (
@@ -181,49 +140,6 @@ const StopPanel = ({
                 <Eye className="w-3 h-3" />
                 View
               </button>
-              
-              {/* Save to trip button */}
-              {isAlreadySaved ? (
-                <button
-                  disabled
-                  className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded text-xs cursor-not-allowed"
-                  title="Already saved to trip"
-                >
-                  <Check className="w-3 h-3" />
-                  Saved
-                </button>
-              ) : (
-                <button
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    try {
-                      await handleSavePlaceToTrip({
-                        id: place.id,
-                        name: place.name,
-                        address: place.address,
-                        rating: place.rating,
-                        userRatingsTotal: place.userRatingsTotal,
-                        types: place.types,
-                        location: place.location,
-                        phone: place.phone,
-                        website: place.website
-                      });
-                    } catch (error) {
-                      console.error('Failed to save place:', error);
-                    }
-                  }}
-                  disabled={savingToTrip[place.id]}
-                  className="flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 disabled:bg-green-400 transition-colors"
-                  title="Save to trip"
-                >
-                  {savingToTrip[place.id] ? (
-                    <div className="animate-spin rounded-full h-3 w-3 border-b border-white"></div>
-                  ) : (
-                    <Plus className="w-3 h-3" />
-                  )}
-                  {savingToTrip[place.id] ? 'Saving...' : 'Add'}
-                </button>
-              )}
             </div>
           );
         }}
@@ -282,9 +198,17 @@ const StopPanel = ({
                 <h3 className="font-semibold text-gray-900 mb-1">{stop.name}</h3>
                 <p className="text-sm text-gray-600 mb-2">{stop.description}</p>
                 
+                {/* Show saved places count for this stop */}
+                {savedTripPlaces.filter(place => place.stop_index === index).length > 0 && (
+                  <div className="flex items-center gap-1 text-xs text-green-600 mb-2">
+                    <MapPin className="w-3 h-3" />
+                    <span>{savedTripPlaces.filter(place => place.stop_index === index).length} saved place{savedTripPlaces.filter(place => place.stop_index === index).length !== 1 ? 's' : ''}</span>
+                  </div>
+                )}
+                
                 {/* Click hint */}
                 <div className="text-xs text-blue-600">
-                  💡 Click to explore places nearby
+                  💡 Click to explore and save places nearby
                 </div>
               </div>
 
@@ -305,18 +229,16 @@ const StopPanel = ({
             Explore {stops[selectedStop]?.name}
           </h3>
           
-          {/* Enhanced Places Search with Category Support */}
+          {/* Enhanced Places Search (Star saves to trip) */}
           <div className="mb-6">
             <EnhancedPlaceSearchWithTrip
               location={currentLocation}
-              favorites={favorites}
-              onToggleFavorite={handleToggleFavorite}
               stopIndex={selectedStop}
-              savedTripPlaces={savedTripPlaces.filter(place => place.stop_index === selectedStop)}
+              savedTripPlaces={savedTripPlaces}
             />
           </div>
 
-          {/* NEW: Category Search Results */}
+          {/* Category Search Results */}
           {nearbySearchResults.length > 0 && activeCategory && (
             <div className="mb-6">
               <div className="flex items-center justify-between mb-3">
@@ -377,44 +299,36 @@ const StopPanel = ({
                           <Navigation className="w-4 h-4" />
                         </button>
                         
-                        {/* Bookmark button */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleToggleFavorite(place);
-                          }}
-                          className={`p-1 rounded transition-colors ${
-                            favorites.some(fav => fav.id === place.id)
-                              ? 'text-yellow-500 hover:text-yellow-600 bg-yellow-50'
-                              : 'text-gray-400 hover:text-yellow-500 hover:bg-yellow-50'
-                          }`}
-                          title="Add to favorites"
-                        >
-                          <Star className={`w-4 h-4 ${
-                            favorites.some(fav => fav.id === place.id) ? 'fill-current' : ''
-                          }`} />
-                        </button>
-                        
-                        {/* Save to trip button */}
-                        {!isPlaceSavedToTrip(place.id) && (
+                        {/* Save to trip star button */}
+                        {!isPlaceSavedToTrip(place.id) ? (
                           <button
                             onClick={async (e) => {
                               e.stopPropagation();
-                              await handleSavePlaceToTrip(place);
+                              const placeToSave = {
+                                place_id: place.id,
+                                name: place.name,
+                                address: place.address,
+                                rating: place.rating,
+                                user_ratings_total: place.userRatingsTotal,
+                                types: place.types,
+                                location: place.location,
+                                phone: place.phone,
+                                website: place.website,
+                                stop_index: selectedStop
+                              };
+                              await handleSavePlaceToTrip(placeToSave);
                             }}
                             disabled={savingToTrip[place.id]}
-                            className="p-1 text-green-600 hover:bg-green-50 rounded disabled:opacity-50"
+                            className="p-1 text-gray-400 hover:text-yellow-500 hover:bg-yellow-50 rounded disabled:opacity-50 transition-colors"
                             title="Save to trip"
                           >
                             {savingToTrip[place.id] ? (
-                              <div className="animate-spin rounded-full h-4 w-4 border-b border-green-600"></div>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b border-yellow-500"></div>
                             ) : (
-                              <Plus className="w-4 h-4" />
+                              <Star className="w-4 h-4" />
                             )}
                           </button>
-                        )}
-                        
-                        {isPlaceSavedToTrip(place.id) && (
+                        ) : (
                           <div className="p-1 text-green-600" title="Already saved to trip">
                             <Check className="w-4 h-4" />
                           </div>
@@ -427,18 +341,7 @@ const StopPanel = ({
             </div>
           )}
           
-          {/* Favorites for this location */}
-          {favorites.length > 0 && (
-            <div className="mb-6">
-              <FavoritesManager
-                favorites={favorites}
-                onRemoveFavorite={handleRemoveFavorite}
-                onPlaceSelect={handlePlaceClick}
-              />
-            </div>
-          )}
-
-          {/* NEW: Saved Trip Places for this stop */}
+          {/* Saved Trip Places for this stop */}
           {savedTripPlaces.filter(place => place.stop_index === selectedStop).length > 0 && (
             <div className="mb-6">
               <h4 className="font-medium text-gray-800 mb-3 flex items-center gap-2">
@@ -452,7 +355,7 @@ const StopPanel = ({
                   .map(place => (
                     <div
                       key={place.id}
-                      className="bg-green-50 border border-green-200 rounded-lg p-3 hover:bg-green-100 transition-colors cursor-pointer"
+                      className="bg-green-50 border border-green-200 rounded-lg p-3 hover:bg-green-100 transition-colors cursor-pointer group"
                       onClick={() => handlePlaceClick({
                         id: place.place_id,
                         name: place.name,
@@ -531,10 +434,10 @@ const StopPanel = ({
             <h4 className="font-medium text-blue-800 mb-2">💡 How to use:</h4>
             <ul className="text-sm text-blue-700 space-y-1">
               <li>• Search for specific places or use category filters (hotel, restaurant, etc.)</li>
-              <li>• Click the star ⭐ to bookmark places for later</li>
+              <li>• Click the star ⭐ to save places to your trip itinerary</li>
               <li>• Click "View" 👁️ to see the place on the map</li>
-              <li>• Click "Add" ➕ to save places to your trip itinerary</li>
               <li>• Saved places will appear as markers on your map</li>
+              <li>• Green checkmark ✅ means the place is already saved</li>
             </ul>
           </div>
         </div>
