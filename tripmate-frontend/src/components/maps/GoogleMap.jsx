@@ -937,20 +937,6 @@ const GoogleMap = ({
         </div>
       )}
 
-      {/* Debug info for development */}
-      {route && memoizedRouteInfo?.isFlightRoute && isLoaded && process.env.NODE_ENV === 'development' && (
-        <div className="absolute bottom-2 left-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 text-xs z-10 max-w-xs">
-          <div className="text-orange-800">
-            <div className="font-medium">Debug Info:</div>
-            <div>Coordinates: {memoizedRouteInfo.coordinates?.length || 0}</div>
-            <div>Flight paths: {flightPathRef.current.length}</div>
-            <div>Bookmarks: {bookmarkMarkersRef.current.length}</div>
-            <div>Nearby places: {nearbyMarkersRef.current.length}</div>
-            <div>Has bounds: {memoizedRouteInfo.bounds ? 'Yes' : 'No'}</div>
-            <div>POI Click: {enablePOIClick ? 'Enabled' : 'Disabled'}</div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
