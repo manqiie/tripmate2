@@ -71,13 +71,14 @@ WSGI_APPLICATION = 'tripmate_backend.wsgi.application'
 
 # Database
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'tripmate',
-        'USER': 'root',
-        'PASSWORD': 'qieqie3915',  # Change this to your password
-        'HOST': 'localhost',
-        'PORT': '3306',
+    "default": {
+        "ENGINE": "django.db.backends.mysql",
+        "NAME": "tripmate",
+        "USER": "tripmate",
+        "PASSWORD": "Tripm@te2025!A",
+        "HOST": "127.0.0.1",
+        "PORT": "3306",
+        "OPTIONS": {"init_command": "SET sql_mode='STRICT_TRANS_TABLES'"},
     }
 }
 
@@ -104,10 +105,10 @@ USE_I18N = True
 USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
-STATIC_URL = '/static/'
-STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'static'),
-]
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+DEBUG = False
+ALLOWED_HOSTS = ["3.27.13.93", "localhost"]
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
