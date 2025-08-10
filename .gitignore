@@ -1,3 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Node / Vite
+node_modules/
+dist/
+*.log
+
+# Django
+staticfiles/
+media/
+
+# Env / secrets
+.env
+*.env
+
+# Misc
+.DS_Store
 venv/
-env/
-.env/
