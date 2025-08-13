@@ -1,11 +1,8 @@
-# trips/serializers.py - FIXED VERSION - Handles large route data properly
+# trips/serializers.py - Updated with checklist support and TripPlaces
 from rest_framework import serializers
 from .models import Trip, TripMedia, TripPlaces
 from .checklist_service import ChecklistService
 from datetime import datetime
-import json
-import gzip
-import base64
 
 class TripListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for trip lists"""
@@ -74,115 +71,6 @@ class TripCreateSerializer(serializers.ModelSerializer):
             'trip_type', 'route_data', 'total_distance', 
             'total_duration', 'generate_checklist'
         ]
-    
-    def validate_route_data(self, value):
-        """Validate and optimize route data before saving"""
-        if not value:
-            return value
-        
-        # FIXED: Optimize large route data
-        try:
-            optimized_data = self._optimize_route_data(value)
-            
-            # Check size after optimization
-            json_size = len(json.dumps(optimized_data))
-            print(f"📊 Route data size: {json_size:,} characters")
-            
-            # If still too large (>1MB), compress it
-            if json_size > 1_000_000:  # 1MB limit
-                compressed_data = self._compress_route_data(optimized_data)
-                print(f"🗜️ Compressed route data from {json_size:,} to {len(json.dumps(compressed_data)):,} characters")
-                return compressed_data
-            
-            return optimized_data
-            
-        except Exception as e:
-            print(f"❌ Route data optimization failed: {e}")
-            # Fallback: try to compress original data
-            try:
-                return self._compress_route_data(value)
-            except:
-                # Last resort: store minimal data
-                return self._create_minimal_route_data(value)
-    
-    def _optimize_route_data(self, route_data):
-        """Remove unnecessary data from route to reduce size"""
-        if not isinstance(route_data, dict):
-            return route_data
-        
-        optimized = {
-            'status': route_data.get('status'),
-            'routes': []
-        }
-        
-        # Keep only essential route information
-        for route in route_data.get('routes', []):
-            optimized_route = {
-                'summary': route.get('summary', ''),
-                'bounds': route.get('bounds'),
-                'legs': [],
-                'overview_polyline': route.get('overview_polyline'),  # Keep for map display
-                'warnings': route.get('warnings', [])
-            }
-            
-            # Optimize legs - keep essential info, remove detailed steps
-            for leg in route.get('legs', []):
-                optimized_leg = {
-                    'distance': leg.get('distance'),
-                    'duration': leg.get('duration'),
-                    'start_address': leg.get('start_address'),
-                    'end_address': leg.get('end_address'),
-                    'start_location': leg.get('start_location'),
-                    'end_location': leg.get('end_location'),
-                    # Remove detailed steps to save space
-                    'steps_count': len(leg.get('steps', []))  # Just store count
-                }
-                optimized_route['legs'].append(optimized_leg)
-            
-            optimized['routes'].append(optimized_route)
-        
-        # Keep waypoint order if it exists
-        if 'waypoint_order' in route_data:
-            optimized['waypoint_order'] = route_data['waypoint_order']
-        
-        return optimized
-    
-    def _compress_route_data(self, route_data):
-        """Compress route data using gzip"""
-        try:
-            # Convert to JSON string
-            json_str = json.dumps(route_data)
-            
-            # Compress using gzip
-            compressed = gzip.compress(json_str.encode('utf-8'))
-            
-            # Encode as base64 for storage
-            encoded = base64.b64encode(compressed).decode('utf-8')
-            
-            return {
-                '_compressed': True,
-                '_data': encoded,
-                '_original_size': len(json_str),
-                '_compressed_size': len(encoded)
-            }
-        except Exception as e:
-            print(f"❌ Compression failed: {e}")
-            return self._create_minimal_route_data(route_data)
-    
-    def _create_minimal_route_data(self, route_data):
-        """Create minimal route data as fallback"""
-        return {
-            'status': 'OK',
-            'routes': [{
-                'summary': 'Route calculated successfully',
-                'legs': [{
-                    'distance': {'text': 'N/A', 'value': 0},
-                    'duration': {'text': 'N/A', 'value': 0}
-                }]
-            }],
-            '_minimal': True,
-            '_note': 'Route data was too large and has been minimized'
-        }
     
     def create(self, validated_data):
         generate_checklist = validated_data.pop('generate_checklist', True)
@@ -324,40 +212,14 @@ class TripPlacesUpdateSerializer(serializers.ModelSerializer):
         model = TripPlaces
         fields = ['user_notes', 'is_visited', 'visit_date', 'user_rating']
 
-# Enhanced trip serializer with saved places and route decompression
+# Enhanced trip serializer with saved places
 class TripDetailSerializer(TripSerializer):
-    """Enhanced trip serializer with saved places and route decompression"""
+    """Enhanced trip serializer with saved places"""
     saved_places = TripPlacesSerializer(many=True, read_only=True)
     saved_places_by_stop = serializers.SerializerMethodField()
-    route_data = serializers.SerializerMethodField()  # Override to decompress
     
     class Meta(TripSerializer.Meta):
         fields = TripSerializer.Meta.fields + ['saved_places', 'saved_places_by_stop']
-    
-    def get_route_data(self, obj):
-        """Decompress route data if it was compressed"""
-        route_data = obj.route_data
-        
-        if not route_data:
-            return None
-        
-        # Check if data is compressed
-        if isinstance(route_data, dict) and route_data.get('_compressed'):
-            try:
-                # Decode and decompress
-                encoded_data = route_data['_data']
-                compressed = base64.b64decode(encoded_data.encode('utf-8'))
-                decompressed = gzip.decompress(compressed)
-                return json.loads(decompressed.decode('utf-8'))
-            except Exception as e:
-                print(f"❌ Route decompression failed: {e}")
-                return {
-                    'status': 'OK',
-                    'routes': [],
-                    '_error': 'Failed to decompress route data'
-                }
-        
-        return route_data
     
     def get_saved_places_by_stop(self, obj):
         """Group saved places by stop index"""
